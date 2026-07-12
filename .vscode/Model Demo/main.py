@@ -2,11 +2,12 @@ import cv2
 import numpy as np
 import serial
 import time
+import tkinter as tk
 import customtkinter as ctk
 from PIL import Image
 
 # --- CONFIGURATION ---
-ARDUINO_PORT = 'COM3'  # Update this to your Arduino's COM port
+ARDUINO_PORT = 'COM3'  
 BAUD_RATE = 9600
 
 # HSV Color Range for Toys (Replace with your calibrated values)
@@ -22,45 +23,98 @@ except Exception as e:
     arduino = None
     print(f"Warning: Arduino not connected on {ARDUINO_PORT}")
 
+# --- TOOLTIP CLASS ---
+class ToolTip:
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tw = None
+        self.widget.bind("<Enter>", self.enter)
+        self.widget.bind("<Leave>", self.leave)
+
+    def enter(self, event=None):
+        # Calculate position relative to the widget
+        x = self.widget.winfo_rootx() + 20
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 5
+        
+        self.tw = tk.Toplevel(self.widget)
+        self.tw.wm_overrideredirect(True) # Removes window borders
+        self.tw.wm_geometry(f"+{x}+{y}")
+        
+        label = tk.Label(self.tw, text=self.text, justify='left',
+                       background="#2b2b2b", foreground="#e0e0e0", relief='solid', borderwidth=1,
+                       font=("Arial", 11, "normal"), padx=8, pady=4)
+        label.pack(ipadx=1)
+
+    def leave(self, event=None):
+        if self.tw:
+            self.tw.destroy()
+            self.tw = None
+
 class AIEcoLightSwitcher(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("AIEcoLightswitcher - Control Panel")
-        self.geometry("850x700")
+        self.title("AIEcoLightswitcher - AI Vision Dashboard")
+        self.geometry("1050x550")
         ctk.set_appearance_mode("dark")
+        ctk.set_default_color_theme("blue")
 
-        # --- GUI ELEMENTS ---
-        self.video_label = ctk.CTkLabel(self, text="")
-        self.video_label.pack(pady=10)
+        # --- GRID LAYOUT ---
+        self.grid_columnconfigure(0, weight=1)  # Left column (Video) expands
+        self.grid_columnconfigure(1, weight=0)  # Right column (Sidebar) fixed
+        self.grid_rowconfigure(0, weight=1)
 
-        # Controls Frame
-        self.controls_frame = ctk.CTkFrame(self)
-        self.controls_frame.pack(pady=10, padx=20, fill="x")
+        # --- LEFT: VIDEO FRAME ---
+        self.video_frame = ctk.CTkFrame(self, corner_radius=10)
+        self.video_frame.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
+        self.video_frame.grid_rowconfigure(0, weight=1)
+        self.video_frame.grid_columnconfigure(0, weight=1)
 
-        # Time Slider
-        self.time_display = ctk.CTkLabel(self.controls_frame, text="Simulated Time: 12:00", font=("Arial", 16, "bold"))
-        self.time_display.pack(pady=(10, 0))
+        self.video_label = ctk.CTkLabel(self.video_frame, text="")
+        self.video_label.grid(row=0, column=0)
 
-        self.time_slider = ctk.CTkSlider(self.controls_frame, from_=0, to=24, number_of_steps=24, command=self.update_time)
+        # --- RIGHT: SIDEBAR CONTROLS ---
+        self.sidebar_frame = ctk.CTkFrame(self, width=320, corner_radius=10)
+        self.sidebar_frame.grid(row=0, column=1, padx=(0, 20), pady=20, sticky="nsew")
+        self.sidebar_frame.grid_propagate(False)
+
+        self.title_label = ctk.CTkLabel(self.sidebar_frame, text="Control Panel", font=ctk.CTkFont(size=20, weight="bold"))
+        self.title_label.pack(pady=(20, 30))
+
+        # Status Display
+        self.status_header = ctk.CTkLabel(self.sidebar_frame, text="SYSTEM STATUS", font=ctk.CTkFont(size=12, weight="bold"), text_color="gray")
+        self.status_header.pack(anchor="w", padx=20)
+        
+        self.status_label = ctk.CTkLabel(self.sidebar_frame, text="Booting...", text_color="#2ECC71", font=ctk.CTkFont(size=14, weight="bold"))
+        self.status_label.pack(anchor="w", padx=20, pady=(0, 30))
+
+        # Time Simulator
+        self.time_header = ctk.CTkLabel(self.sidebar_frame, text="TIME SIMULATOR", font=ctk.CTkFont(size=12, weight="bold"), text_color="gray")
+        self.time_header.pack(anchor="w", padx=20)
+
+        self.time_display = ctk.CTkLabel(self.sidebar_frame, text="12:00 (School Hours)", font=ctk.CTkFont(size=16))
+        self.time_display.pack(anchor="w", padx=20, pady=(5, 5))
+
+        self.time_slider = ctk.CTkSlider(self.sidebar_frame, from_=0, to=24, number_of_steps=24, command=self.update_time)
         self.time_slider.set(12)
         self.time_slider.pack(pady=10, padx=20, fill="x")
+        ToolTip(self.time_slider, "Drag to simulate time.\n08:00 - 15:59 = School Hours (Active)\n16:00 - 07:59 = Out of Hours (Sleep)")
 
-        # Override Buttons Frame
-        self.button_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.button_frame.pack(pady=10)
+        # Manual Overrides
+        self.override_header = ctk.CTkLabel(self.sidebar_frame, text="SYSTEM OVERRIDE", font=ctk.CTkFont(size=12, weight="bold"), text_color="gray")
+        self.override_header.pack(anchor="w", padx=20, pady=(30, 10))
 
-        self.btn_auto = ctk.CTkButton(self.button_frame, text="AUTO MODE", fg_color="blue", command=self.set_mode_auto)
-        self.btn_auto.grid(row=0, column=0, padx=10)
+        self.btn_auto = ctk.CTkButton(self.sidebar_frame, text="AUTO MODE", fg_color="#2980B9", hover_color="#3498DB", command=self.set_mode_auto)
+        self.btn_auto.pack(pady=5, padx=20, fill="x")
+        ToolTip(self.btn_auto, "Hands-free operation.\nLights are controlled by AI/CV detection\nduring active school hours.")
 
-        self.btn_on = ctk.CTkButton(self.button_frame, text="FORCE ON", fg_color="green", command=self.set_mode_on)
-        self.btn_on.grid(row=0, column=1, padx=10)
+        self.btn_on = ctk.CTkButton(self.sidebar_frame, text="FORCE ON", fg_color="#27AE60", hover_color="#2ECC71", command=self.set_mode_on)
+        self.btn_on.pack(pady=5, padx=20, fill="x")
+        ToolTip(self.btn_on, "Manual Override: ON\nBypasses AI and forces Arduino to\nkeep the lights turned ON.")
 
-        self.btn_off = ctk.CTkButton(self.button_frame, text="FORCE OFF", fg_color="red", command=self.set_mode_off)
-        self.btn_off.grid(row=0, column=2, padx=10)
-
-        # Status Label
-        self.status_label = ctk.CTkLabel(self, text="Status: Booting...", text_color="green", font=("Arial", 16, "bold"))
-        self.status_label.pack(pady=10)
+        self.btn_off = ctk.CTkButton(self.sidebar_frame, text="FORCE OFF", fg_color="#C0392B", hover_color="#E74C3C", command=self.set_mode_off)
+        self.btn_off.pack(pady=5, padx=20, fill="x")
+        ToolTip(self.btn_off, "Manual Override: OFF\nBypasses AI and forces Arduino to\nkeep the lights turned OFF.")
 
         # --- SYSTEM STATE ---
         self.cap = cv2.VideoCapture(0)
@@ -68,8 +122,8 @@ class AIEcoLightSwitcher(ctk.CTk):
         self.school_start = 8
         self.school_end = 16
         
-        self.mode = "AUTO"  # AUTO, FORCE_ON, FORCE_OFF
-        self.system_state = "WAKE"  # Renamed from 'state' to avoid Tkinter collision
+        self.mode = "AUTO" 
+        self.system_state = "WAKE" 
         self.state_timer = time.time()
         self.frames_checked = 0
         self.frames_with_detection = 0
@@ -80,7 +134,11 @@ class AIEcoLightSwitcher(ctk.CTk):
     # --- UI CALLBACKS ---
     def update_time(self, value):
         self.current_time = int(value)
-        self.time_display.configure(text=f"Simulated Time: {self.current_time:02d}:00")
+        if self.school_start <= self.current_time < self.school_end:
+            status_txt = "(School Hours)"
+        else:
+            status_txt = "(Out of Hours)"
+        self.time_display.configure(text=f"{self.current_time:02d}:00 {status_txt}")
 
     def set_mode_auto(self):
         self.mode = "AUTO"
@@ -100,13 +158,13 @@ class AIEcoLightSwitcher(ctk.CTk):
             try:
                 arduino.write(b'1' if status else b'0')
             except:
-                pass # Fail silently if unplugged during runtime
+                pass 
 
     # --- MAIN LOGIC LOOP ---
     def update_loop(self):
         ret, frame = self.cap.read()
         
-        # Hardware Fail-safe: No Camera Connected
+        # Hardware Fail-safe
         if not ret:
             frame = np.zeros((480, 640, 3), dtype=np.uint8)
             cv2.putText(frame, "CAMERA NOT CONNECTED", (100, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
@@ -114,42 +172,40 @@ class AIEcoLightSwitcher(ctk.CTk):
 
         display_frame = frame.copy()
 
-        # 1. Handle Manual Overrides First
+        # 1. Manual Overrides
         if self.mode == "FORCE_ON":
-            self.status_label.configure(text="MANUAL OVERRIDE: LIGHTS ON", text_color="green")
+            self.status_label.configure(text="OVERRIDE: ON", text_color="#2ECC71")
             self.render_frame(display_frame)
             self.after(30, self.update_loop)
             return
             
         if self.mode == "FORCE_OFF":
-            self.status_label.configure(text="MANUAL OVERRIDE: LIGHTS OFF", text_color="red")
+            self.status_label.configure(text="OVERRIDE: OFF", text_color="#E74C3C")
             self.render_frame(display_frame)
             self.after(30, self.update_loop)
             return
 
-        # 2. Enforce School Hours (Auto Mode Only)
+        # 2. Enforce School Hours
         if not (self.school_start <= self.current_time < self.school_end):
-            self.status_label.configure(text="SYSTEM SLEEP: OUT OF SCHOOL HOURS", text_color="red")
+            self.status_label.configure(text="SLEEP: OUT OF HOURS", text_color="#E74C3C")
             self.send_command(False)
             
-            # Apply visual grey-out
             overlay = display_frame.copy()
             cv2.rectangle(overlay, (0, 0), (display_frame.shape[1], display_frame.shape[0]), (20, 20, 20), -1)
             display_frame = cv2.addWeighted(overlay, 0.8, display_frame, 0.2, 0)
-            cv2.putText(display_frame, "OUT OF HOURS", (180, 240), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
+            cv2.putText(display_frame, "SYSTEM SLEEP", (180, 240), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
             
             self.render_frame(display_frame)
             self.after(30, self.update_loop)
             return
 
-        # 3. Core OpenCV Processing Cycle (Only runs if camera works and in Auto mode)
+        # 3. Core Processing Cycle 
         if ret:
             elapsed_time = time.time() - self.state_timer
 
             if self.system_state == "WAKE":
-                self.status_label.configure(text="Status: EVALUATING CLASSROOM (1.5s window)", text_color="#00FF00")
+                self.status_label.configure(text="EVALUATING (1.5s)", text_color="#2ECC71")
 
-                # Apply Color Masking
                 hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
                 mask = cv2.inRange(hsv, LOWER_COLOR, UPPER_COLOR)
                 contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -165,7 +221,6 @@ class AIEcoLightSwitcher(ctk.CTk):
                 if detection_in_frame:
                     self.frames_with_detection += 1
 
-                # Transition to SLEEP
                 if elapsed_time >= 1.5:
                     if self.frames_checked > 0 and self.frames_with_detection >= (self.frames_checked * 0.2): 
                         self.send_command(True)
@@ -176,22 +231,20 @@ class AIEcoLightSwitcher(ctk.CTk):
                     self.state_timer = time.time()
 
             elif self.system_state == "SLEEP":
-                self.status_label.configure(text="Status: IDLE (5s interval)", text_color="orange")
+                self.status_label.configure(text="IDLE (5s interval)", text_color="#F39C12")
                 
-                # Apply visual grey-out effect during sleep phase
                 overlay = display_frame.copy()
                 cv2.rectangle(overlay, (0, 0), (display_frame.shape[1], display_frame.shape[0]), (50, 50, 50), -1)
                 display_frame = cv2.addWeighted(overlay, 0.7, display_frame, 0.3, 0)
                 cv2.putText(display_frame, "POWER SAVING SLEEP", (120, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
-                # Transition back to WAKE
                 if elapsed_time >= 5.0:
                     self.frames_checked = 0
                     self.frames_with_detection = 0
                     self.system_state = "WAKE"
                     self.state_timer = time.time()
         else:
-            self.status_label.configure(text="Status: WAITING FOR CAMERA", text_color="orange")
+            self.status_label.configure(text="NO CAMERA FEED", text_color="#E74C3C")
 
         self.render_frame(display_frame)
         self.after(30, self.update_loop)
@@ -200,10 +253,9 @@ class AIEcoLightSwitcher(ctk.CTk):
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         img = Image.fromarray(frame_rgb)
         
-        # Use CTkImage to fix scaling warnings
         ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=(640, 480))
         self.video_label.configure(image=ctk_img)
-        self.video_label.image = ctk_img  # Keep a reference to prevent garbage collection
+        self.video_label.image = ctk_img  
 
 if __name__ == "__main__":
     app = AIEcoLightSwitcher()
