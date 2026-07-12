@@ -3,7 +3,7 @@ import numpy as np
 import serial
 import time
 import customtkinter as ctk
-from PIL import Image, ImageTk
+from PIL import Image
 
 # --- CONFIGURATION ---
 ARDUINO_PORT = 'COM3'  # Update this to your Arduino's COM port
@@ -69,7 +69,7 @@ class AIEcoLightSwitcher(ctk.CTk):
         self.school_end = 16
         
         self.mode = "AUTO"  # AUTO, FORCE_ON, FORCE_OFF
-        self.state = "WAKE" 
+        self.system_state = "WAKE"  # Renamed from 'state' to avoid Tkinter collision
         self.state_timer = time.time()
         self.frames_checked = 0
         self.frames_with_detection = 0
@@ -84,7 +84,7 @@ class AIEcoLightSwitcher(ctk.CTk):
 
     def set_mode_auto(self):
         self.mode = "AUTO"
-        self.state = "WAKE"
+        self.system_state = "WAKE"
         self.state_timer = time.time()
 
     def set_mode_on(self):
@@ -95,10 +95,10 @@ class AIEcoLightSwitcher(ctk.CTk):
         self.mode = "FORCE_OFF"
         self.send_command(False)
 
-    def send_command(self, state):
+    def send_command(self, status):
         if arduino:
             try:
-                arduino.write(b'1' if state else b'0')
+                arduino.write(b'1' if status else b'0')
             except:
                 pass # Fail silently if unplugged during runtime
 
@@ -146,7 +146,7 @@ class AIEcoLightSwitcher(ctk.CTk):
         if ret:
             elapsed_time = time.time() - self.state_timer
 
-            if self.state == "WAKE":
+            if self.system_state == "WAKE":
                 self.status_label.configure(text="Status: EVALUATING CLASSROOM (1.5s window)", text_color="#00FF00")
 
                 # Apply Color Masking
@@ -172,10 +172,10 @@ class AIEcoLightSwitcher(ctk.CTk):
                     else:
                         self.send_command(False)
 
-                    self.state = "SLEEP"
+                    self.system_state = "SLEEP"
                     self.state_timer = time.time()
 
-            elif self.state == "SLEEP":
+            elif self.system_state == "SLEEP":
                 self.status_label.configure(text="Status: IDLE (5s interval)", text_color="orange")
                 
                 # Apply visual grey-out effect during sleep phase
@@ -188,7 +188,7 @@ class AIEcoLightSwitcher(ctk.CTk):
                 if elapsed_time >= 5.0:
                     self.frames_checked = 0
                     self.frames_with_detection = 0
-                    self.state = "WAKE"
+                    self.system_state = "WAKE"
                     self.state_timer = time.time()
         else:
             self.status_label.configure(text="Status: WAITING FOR CAMERA", text_color="orange")
@@ -199,9 +199,11 @@ class AIEcoLightSwitcher(ctk.CTk):
     def render_frame(self, frame):
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         img = Image.fromarray(frame_rgb)
-        imgtk = ImageTk.PhotoImage(image=img)
-        self.video_label.imgtk = imgtk
-        self.video_label.configure(image=imgtk)
+        
+        # Use CTkImage to fix scaling warnings
+        ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=(640, 480))
+        self.video_label.configure(image=ctk_img)
+        self.video_label.image = ctk_img  # Keep a reference to prevent garbage collection
 
 if __name__ == "__main__":
     app = AIEcoLightSwitcher()
