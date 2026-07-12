@@ -33,12 +33,11 @@ class ToolTip:
         self.widget.bind("<Leave>", self.leave)
 
     def enter(self, event=None):
-        # Calculate position relative to the widget
         x = self.widget.winfo_rootx() + 20
         y = self.widget.winfo_rooty() + self.widget.winfo_height() + 5
         
         self.tw = tk.Toplevel(self.widget)
-        self.tw.wm_overrideredirect(True) # Removes window borders
+        self.tw.wm_overrideredirect(True) 
         self.tw.wm_geometry(f"+{x}+{y}")
         
         label = tk.Label(self.tw, text=self.text, justify='left',
@@ -60,8 +59,8 @@ class AIEcoLightSwitcher(ctk.CTk):
         ctk.set_default_color_theme("blue")
 
         # --- GRID LAYOUT ---
-        self.grid_columnconfigure(0, weight=1)  # Left column (Video) expands
-        self.grid_columnconfigure(1, weight=0)  # Right column (Sidebar) fixed
+        self.grid_columnconfigure(0, weight=1)  
+        self.grid_columnconfigure(1, weight=0)  
         self.grid_rowconfigure(0, weight=1)
 
         # --- LEFT: VIDEO FRAME ---
@@ -92,13 +91,13 @@ class AIEcoLightSwitcher(ctk.CTk):
         self.time_header = ctk.CTkLabel(self.sidebar_frame, text="TIME SIMULATOR", font=ctk.CTkFont(size=12, weight="bold"), text_color="gray")
         self.time_header.pack(anchor="w", padx=20)
 
-        self.time_display = ctk.CTkLabel(self.sidebar_frame, text="12:00 (School Hours)", font=ctk.CTkFont(size=16))
+        self.time_display = ctk.CTkLabel(self.sidebar_frame, text="12:00 PM (School Hours)", font=ctk.CTkFont(size=16))
         self.time_display.pack(anchor="w", padx=20, pady=(5, 5))
 
         self.time_slider = ctk.CTkSlider(self.sidebar_frame, from_=0, to=24, number_of_steps=24, command=self.update_time)
         self.time_slider.set(12)
         self.time_slider.pack(pady=10, padx=20, fill="x")
-        ToolTip(self.time_slider, "Drag to simulate time.\n08:00 - 15:59 = School Hours (Active)\n16:00 - 07:59 = Out of Hours (Sleep)")
+        ToolTip(self.time_slider, "Drag to simulate time.\n08:00 AM - 03:59 PM = School Hours\n04:00 PM - 07:59 AM = Power Sleep")
 
         # Manual Overrides
         self.override_header = ctk.CTkLabel(self.sidebar_frame, text="SYSTEM OVERRIDE", font=ctk.CTkFont(size=12, weight="bold"), text_color="gray")
@@ -119,8 +118,8 @@ class AIEcoLightSwitcher(ctk.CTk):
         # --- SYSTEM STATE ---
         self.cap = cv2.VideoCapture(0)
         self.current_time = 12
-        self.school_start = 8
-        self.school_end = 16
+        self.school_start = 8   # 8:00 AM
+        self.school_end = 16    # 4:00 PM
         
         self.mode = "AUTO" 
         self.system_state = "WAKE" 
@@ -132,13 +131,29 @@ class AIEcoLightSwitcher(ctk.CTk):
         self.update_loop()
 
     # --- UI CALLBACKS ---
+    def format_ampm(self, hour):
+        """Converts 24hr integer to AM/PM string format"""
+        if hour == 0 or hour == 24:
+            return "12:00 AM"
+        elif hour < 12:
+            return f"{hour:02d}:00 AM"
+        elif hour == 12:
+            return "12:00 PM"
+        else:
+            return f"{(hour - 12):02d}:00 PM"
+
     def update_time(self, value):
         self.current_time = int(value)
+        
+        # Check against 24hr logic for system rules
         if self.school_start <= self.current_time < self.school_end:
             status_txt = "(School Hours)"
         else:
             status_txt = "(Out of Hours)"
-        self.time_display.configure(text=f"{self.current_time:02d}:00 {status_txt}")
+            
+        # Display as AM/PM
+        display_time = self.format_ampm(self.current_time)
+        self.time_display.configure(text=f"{display_time} {status_txt}")
 
     def set_mode_auto(self):
         self.mode = "AUTO"
