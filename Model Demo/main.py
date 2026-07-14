@@ -8,7 +8,7 @@ from PIL import Image
 from ultralytics import YOLO
 
 # --- CONFIGURATION ---
-ARDUINO_PORT = 'COM3'  # Update this to your Arduino's COM port
+ARDUINO_PORT = 'COM8'  # Update this to your Arduino's COM port
 BAUD_RATE = 9600
 
 # YOLO targets (What triggers the lights)
