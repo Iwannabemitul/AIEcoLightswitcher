@@ -5,15 +5,14 @@ import time
 import tkinter as tk
 import customtkinter as ctk
 from PIL import Image
+from ultralytics import YOLO
 
 # --- CONFIGURATION ---
-ARDUINO_PORT = 'COM3'  
+ARDUINO_PORT = 'COM3'  # Update this to your Arduino's COM port
 BAUD_RATE = 9600
 
-# HSV Color Range for Toys (Replace with your calibrated values)
-LOWER_COLOR = np.array([0, 120, 70])
-UPPER_COLOR = np.array([10, 255, 255])
-MIN_AREA = 500  
+# YOLO targets (What triggers the lights)
+VALID_TARGETS = ["person", "bird", "skateboard"]
 
 # Attempt hardware connection
 try:
@@ -57,6 +56,11 @@ class AIEcoLightSwitcher(ctk.CTk):
         self.geometry("1050x550")
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
+
+        # --- LOAD YOLO MODEL ---
+        print("Loading YOLOv8 Model...")
+        self.model = YOLO("yolov8n.pt")
+        print("Model Loaded.")
 
         # --- GRID LAYOUT ---
         self.grid_columnconfigure(0, weight=1)  
@@ -105,7 +109,7 @@ class AIEcoLightSwitcher(ctk.CTk):
 
         self.btn_auto = ctk.CTkButton(self.sidebar_frame, text="AUTO MODE", fg_color="#2980B9", hover_color="#3498DB", command=self.set_mode_auto)
         self.btn_auto.pack(pady=5, padx=20, fill="x")
-        ToolTip(self.btn_auto, "Hands-free operation.\nLights are controlled by AI/CV detection\nduring active school hours.")
+        ToolTip(self.btn_auto, "Hands-free operation.\nLights are controlled by AI detection\nduring active school hours.")
 
         self.btn_on = ctk.CTkButton(self.sidebar_frame, text="FORCE ON", fg_color="#27AE60", hover_color="#2ECC71", command=self.set_mode_on)
         self.btn_on.pack(pady=5, padx=20, fill="x")
@@ -118,8 +122,8 @@ class AIEcoLightSwitcher(ctk.CTk):
         # --- SYSTEM STATE ---
         self.cap = cv2.VideoCapture(0)
         self.current_time = 12
-        self.school_start = 8   # 8:00 AM
-        self.school_end = 16    # 4:00 PM
+        self.school_start = 8   
+        self.school_end = 16    
         
         self.mode = "AUTO" 
         self.system_state = "WAKE" 
@@ -132,7 +136,6 @@ class AIEcoLightSwitcher(ctk.CTk):
 
     # --- UI CALLBACKS ---
     def format_ampm(self, hour):
-        """Converts 24hr integer to AM/PM string format"""
         if hour == 0 or hour == 24:
             return "12:00 AM"
         elif hour < 12:
@@ -144,14 +147,10 @@ class AIEcoLightSwitcher(ctk.CTk):
 
     def update_time(self, value):
         self.current_time = int(value)
-        
-        # Check against 24hr logic for system rules
         if self.school_start <= self.current_time < self.school_end:
             status_txt = "(School Hours)"
         else:
             status_txt = "(Out of Hours)"
-            
-        # Display as AM/PM
         display_time = self.format_ampm(self.current_time)
         self.time_display.configure(text=f"{display_time} {status_txt}")
 
@@ -214,29 +213,40 @@ class AIEcoLightSwitcher(ctk.CTk):
             self.after(30, self.update_loop)
             return
 
-        # 3. Core Processing Cycle 
+        # 3. Core Processing Cycle (YOLOv8)
         if ret:
             elapsed_time = time.time() - self.state_timer
 
             if self.system_state == "WAKE":
                 self.status_label.configure(text="EVALUATING (1.5s)", text_color="#2ECC71")
 
-                hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-                mask = cv2.inRange(hsv, LOWER_COLOR, UPPER_COLOR)
-                contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
+                # Run YOLO inference
+                results = self.model(frame, stream=True, verbose=False)
                 detection_in_frame = False
-                for cnt in contours:
-                    if cv2.contourArea(cnt) > MIN_AREA:
-                        x, y, w, h = cv2.boundingRect(cnt)
-                        cv2.rectangle(display_frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
-                        detection_in_frame = True
+
+                for r in results:
+                    boxes = r.boxes
+                    for box in boxes:
+                        cls = int(box.cls[0])
+                        class_name = self.model.names[cls]
+                        
+                        # Check if the AI detected any of our allowed targets
+                        if class_name in VALID_TARGETS:
+                            x1, y1, x2, y2 = map(int, box.xyxy[0])
+                            
+                            # Draw a box around the detection to prove it works
+                            cv2.rectangle(display_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                            cv2.putText(display_frame, "Occupant Detected", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                            
+                            detection_in_frame = True
 
                 self.frames_checked += 1
                 if detection_in_frame:
                     self.frames_with_detection += 1
 
+                # Transition to SLEEP
                 if elapsed_time >= 1.5:
+                    # If target is detected in >= 20% of frames during the wake window
                     if self.frames_checked > 0 and self.frames_with_detection >= (self.frames_checked * 0.2): 
                         self.send_command(True)
                     else:
