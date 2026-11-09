@@ -1064,7 +1064,13 @@ class AIEcoLightSwitcher(ctk.CTk):
         ports = HardwareController.list_available_ports()
         port_opts = list(ports) if ports else []
         port_opts.append("MOCK_COM1 (Simulator)")
-        default_port = port_opts[0]
+        hw_port = getattr(self.engine.hardware, "port", "")
+        if hw_port and hw_port in port_opts:
+            default_port = hw_port
+        elif hw_port and "mock" in str(hw_port).lower():
+            default_port = "MOCK_COM1 (Simulator)"
+        else:
+            default_port = port_opts[0]
 
         self.combo_ports = ctk.CTkComboBox(row_port, values=port_opts)
         self.combo_ports.set(default_port)
@@ -1089,10 +1095,13 @@ class AIEcoLightSwitcher(ctk.CTk):
         self.combo_baud.grid(row=0, column=1, sticky="ew")
 
         # Connect/Disconnect button
+        is_conn = self.engine.hardware.is_connected
         self.btn_connect_port = ctk.CTkButton(
-            card_serial, text="Connect Serial",
+            card_serial,
+            text="Disconnect Serial" if is_conn else "Connect Serial",
             font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
-            fg_color=BENTO_THEME["status_active_mint"], hover_color="#059669",
+            fg_color=BENTO_THEME["status_tamper_crimson"] if is_conn else BENTO_THEME["status_active_mint"],
+            hover_color="#DC2626" if is_conn else "#059669",
             command=self.toggle_serial_connection
         )
         self.btn_connect_port.pack(fill="x", padx=10, pady=6)
