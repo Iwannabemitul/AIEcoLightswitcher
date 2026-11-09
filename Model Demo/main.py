@@ -20,6 +20,7 @@ Modernized Bento-Grid Edge AI Command Dashboard featuring:
 import copy
 from collections import deque
 from datetime import datetime
+import gc
 import os
 import re
 import sys
@@ -349,6 +350,94 @@ class HudRenderer:
             (bx1 + 34, by1 + 42),
             cv2.FONT_HERSHEY_SIMPLEX, 0.33, (160, 160, 160), 1, cv2.LINE_AA
         )
+
+    @classmethod
+    def draw_target_bounding_box(
+        cls,
+        frame: np.ndarray,
+        xyxy: Tuple[int, int, int, int],
+        is_in_roi: bool = True,
+        label: str = "PERSON",
+        conf: float = 0.90,
+        anchor: Optional[Tuple[int, int]] = None,
+        is_doll: bool = False
+    ) -> None:
+        """
+        Renders tactical target bounding box onto OpenCV frame:
+        - 1px thin boundary line
+        - 4 tactical corner brackets (2px thick)
+        - Translucent confidence pill badge with category tag
+        - Spatial anchor point target dot with tactical ring
+        """
+        if frame is None or frame.size == 0 or xyxy is None or len(xyxy) < 4:
+            return
+
+        h, w = frame.shape[:2]
+        x1, y1, x2, y2 = [int(v) for v in xyxy[:4]]
+        x1, x2 = min(x1, x2), max(x1, x2)
+        y1, y2 = min(y1, y2), max(y1, y2)
+
+        x1 = max(0, min(x1, w - 1))
+        y1 = max(0, min(y1, h - 1))
+        x2 = max(0, min(x2, w - 1))
+        y2 = max(0, min(y2, h - 1))
+
+        if (x2 - x1) < 4 or (y2 - y1) < 4:
+            return
+
+        # Color selection
+        if is_doll:
+            color = BGR_CYAN
+        elif is_in_roi:
+            color = BGR_MINT
+        else:
+            color = BGR_AMBER
+
+        # 1. Thin box boundary (1px)
+        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 1, cv2.LINE_AA)
+
+        # 2. 4 Tactical Corner Brackets (2px thick)
+        bw = x2 - x1
+        bh = y2 - y1
+        blen = max(6, min(16, bw // 4, bh // 4))
+        thick = 2
+        # Top-Left
+        cv2.line(frame, (x1, y1), (x1 + blen, y1), color, thick, cv2.LINE_AA)
+        cv2.line(frame, (x1, y1), (x1, y1 + blen), color, thick, cv2.LINE_AA)
+        # Top-Right
+        cv2.line(frame, (x2, y1), (x2 - blen, y1), color, thick, cv2.LINE_AA)
+        cv2.line(frame, (x2, y1), (x2, y1 + blen), color, thick, cv2.LINE_AA)
+        # Bottom-Left
+        cv2.line(frame, (x1, y2), (x1 + blen, y2), color, thick, cv2.LINE_AA)
+        cv2.line(frame, (x1, y2), (x1, y2 - blen), color, thick, cv2.LINE_AA)
+        # Bottom-Right
+        cv2.line(frame, (x2, y2), (x2 - blen, y2), color, thick, cv2.LINE_AA)
+        cv2.line(frame, (x2, y2), (x2, y2 - blen), color, thick, cv2.LINE_AA)
+
+        # 3. Translucent Confidence Pill Badge
+        clean_label = str(label).split()[0].upper() if label else "TARGET"
+        badge_text = f"{clean_label} {conf:.2f}"
+        chip_x = max(2, min(x1, w - 110))
+        chip_y = max(4, y1 - 24)
+        cls.draw_chip(
+            frame,
+            badge_text,
+            pos=(chip_x, chip_y),
+            bg_color=BGR_CARD_BG,
+            text_color=(255, 255, 255),
+            border_color=color,
+            alpha=0.85,
+            pad=(6, 3),
+            font_scale=0.38,
+            dot_color=BGR_MINT if is_in_roi else None
+        )
+
+        # 4. Spatial Anchor Point Target Dot
+        if anchor is not None and len(anchor) >= 2:
+            ax, ay = int(anchor[0]), int(anchor[1])
+            if 0 <= ax < w and 0 <= ay < h:
+                cv2.circle(frame, (ax, ay), 4, color, -1, cv2.LINE_AA)
+                cv2.circle(frame, (ax, ay), 7, (255, 255, 255), 1, cv2.LINE_AA)
 
 
 # ============================================================================
@@ -1627,14 +1716,58 @@ class AIEcoLightSwitcher(ctk.CTk):
             # 1. Render HUD Telemetry Chips onto the OpenCV frame
             HudRenderer.render_hud_telemetry_chips(frame, metrics)
 
-            # 2. Render Tactical Corner Brackets on ROI Polygon Vertices
+            # 2. Render Tactical Target Bounding Boxes (inside and outside ROI)
+            inside_dets, outside_dets = getattr(self.engine, "_last_detections", ([], []))
+            for det in inside_dets:
+                if isinstance(det, dict):
+                    xyxy = det.get("xyxy")
+                    conf = float(det.get("conf", 0.0))
+                    lbl = det.get("label", "PERSON")
+                    anchor = det.get("anchor")
+                    is_doll = bool(det.get("is_doll", False))
+                elif isinstance(det, (list, tuple)) and len(det) >= 1:
+                    xyxy = det[0]
+                    conf = float(det[1]) if len(det) > 1 and isinstance(det[1], (int, float)) else 0.0
+                    lbl = str(det[2]) if len(det) > 2 else "PERSON"
+                    anchor = det[3] if len(det) > 3 and isinstance(det[3], (list, tuple)) else None
+                    is_doll = False
+                else:
+                    continue
+                if xyxy is not None and len(xyxy) >= 4:
+                    HudRenderer.draw_target_bounding_box(
+                        frame, xyxy, is_in_roi=True, label=lbl, conf=conf,
+                        anchor=anchor, is_doll=is_doll
+                    )
+
+            for det in outside_dets:
+                if isinstance(det, dict):
+                    xyxy = det.get("xyxy")
+                    conf = float(det.get("conf", 0.0))
+                    lbl = det.get("label", "PERSON")
+                    anchor = det.get("anchor")
+                    is_doll = bool(det.get("is_doll", False))
+                elif isinstance(det, (list, tuple)) and len(det) >= 1:
+                    xyxy = det[0]
+                    conf = float(det[1]) if len(det) > 1 and isinstance(det[1], (int, float)) else 0.0
+                    lbl = str(det[2]) if len(det) > 2 else "PERSON"
+                    anchor = det[3] if len(det) > 3 and isinstance(det[3], (list, tuple)) else None
+                    is_doll = False
+                else:
+                    continue
+                if xyxy is not None and len(xyxy) >= 4:
+                    HudRenderer.draw_target_bounding_box(
+                        frame, xyxy, is_in_roi=False, label=lbl, conf=conf,
+                        anchor=anchor, is_doll=is_doll
+                    )
+
+            # 3. Render Tactical Corner Brackets on ROI Polygon Vertices
             if self.engine.config.roi_enabled and self.engine.config.roi_polygon:
                 HudRenderer.draw_roi_vertex_brackets(
                     frame, self.engine.config.roi_polygon,
                     is_occupied=(roi_occupants > 0)
                 )
 
-            # 3. Render Sleek Duty-Cycle Sleep Overlay Banner
+            # 4. Render Sleek Duty-Cycle Sleep Overlay Banner
             if cycle_state == "SLEEPING":
                 HudRenderer.draw_duty_sleep_overlay(frame, countdown)
 
@@ -1773,17 +1906,25 @@ class AIEcoLightSwitcher(ctk.CTk):
 
     def on_closing(self):
         """
-        Graceful shutdown protocol:
-        1. Cancel pending after() timer to avoid race condition or dangling callbacks.
-        2. Signal engine to join worker thread, stop camera stream, and disconnect serial.
-        3. Cleanly destroy the Tkinter window.
+        Graceful zero-deadlock shutdown protocol:
+        1. Immediately withdraw window for perceived instant UI disappearance (<2ms).
+        2. Cleanly cancel all pending UI and Tcl after timers.
+        3. Signal engine to stop and cleanly join worker thread.
+        4. Run GC on main thread while Tcl interpreter is still alive.
+        5. Cleanly destroy the Tkinter window with zero lingering threads.
         """
         if self._is_shutting_down:
             return
         print("[App] Clean shutdown sequence initiated...")
         self._is_shutting_down = True
 
-        # 1. Cancel pending UI and animation timers
+        # 1. Immediately withdraw window for instantaneous UI disappearance
+        try:
+            self.withdraw()
+        except Exception:
+            pass
+
+        # 2. Cancel pending UI and animation timers
         if self._update_after_id is not None:
             try:
                 self.after_cancel(self._update_after_id)
@@ -1798,13 +1939,30 @@ class AIEcoLightSwitcher(ctk.CTk):
                 pass
             self._pulse_after_id = None
 
-        # 2. Stop engine background thread and hardware
+        # Cleanly cancel all pending after callbacks at Tcl interpreter level
         try:
-            self.engine.stop()
+            for aid in self.tk.splitlist(self.tk.eval("after info")):
+                try:
+                    self.tk.call("after", "cancel", aid)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # 3. Stop engine background thread and hardware
+        try:
+            if hasattr(self, "engine") and self.engine is not None:
+                self.engine.stop()
         except Exception as e:
             print(f"[App] Engine stop warning: {e}")
 
-        # 3. Destroy Tkinter window
+        # 4. Run GC on main thread while Tcl interpreter is still valid
+        try:
+            gc.collect(1)
+        except Exception:
+            pass
+
+        # 5. Destroy Tkinter window
         try:
             self.destroy()
         except Exception:

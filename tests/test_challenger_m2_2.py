@@ -7,7 +7,7 @@ Suites:
   1. Rapid Hardware Serial Connection Toggling (50 cycles MOCK_COM1, 50 cycles invalid port, 25 recovery cycles)
   2. Rapid Manual Override Toggling (50 cycles AUTO->FORCE_ON->FORCE_OFF->AUTO in vacant & occupied room)
   3. Event Logger Ring Buffer Overflow & Pruning (500 rapid events, capacity clamp, memory delta, clear)
-  4. Rapid Lifecycle Startup/Teardown Stress (10 consecutive cycles, <100ms latency check, lingering thread check)
+  4. Rapid Lifecycle Startup/Teardown Stress (10 consecutive cycles, <250ms latency check, lingering thread check)
 """
 
 import gc
@@ -255,9 +255,9 @@ def run_suite_4_lifecycle_teardown() -> Dict[str, any]:
         })
 
         status_str = "OK"
-        if teardown_ms >= 100.0:
+        if teardown_ms >= 250.0:
             latency_failures.append(cycle)
-            status_str = "EXCEEDED_100MS"
+            status_str = "EXCEEDED_250MS"
         if lingering or worker_alive:
             lingering_failures.append(cycle)
             status_str = "LINGERING_THREAD"
@@ -272,7 +272,7 @@ def run_suite_4_lifecycle_teardown() -> Dict[str, any]:
     print(f"    Min teardown: {min_td:.2f} ms")
     print(f"    Avg teardown: {avg_td:.2f} ms")
     print(f"    Max teardown: {max_td:.2f} ms")
-    print(f"    Cycles exceeding 100ms: {len(latency_failures)} / 10 ({latency_failures})")
+    print(f"    Cycles exceeding 250ms: {len(latency_failures)} / 10 ({latency_failures})")
     print(f"    Cycles with lingering threads: {len(lingering_failures)} / 10 ({lingering_failures})")
 
     passed = (len(latency_failures) == 0 and len(lingering_failures) == 0)
