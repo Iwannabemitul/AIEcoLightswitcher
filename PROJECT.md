@@ -44,9 +44,9 @@ AIEcoLightswitcher is a high-performance computer vision smart energy system tha
 ## Milestones
 | # | Track | Name | Scope | Dependencies | Status |
 |---|-------|------|-------|-------------|--------|
-| E2E | Testing | E2E Test Suite Track | Implement `tests/test_verification_suite.py` and `run_verification.py` covering Tiers 1–4 test cases using mock video and mock serial; publish `TEST_READY.md` | Survey | PLANNED |
-| M1 | Implementation | Core Detection Engine & Hardware Layer | Refactor `eco_engine.py`: implement `detect_best_device`, `SpatialROIFilter`, `TemporalPresenceSmoother`, `DutyCycleManager`, `EngineConfig`, `MockHardwareController`, `MockVideoSource`, and decoupled `AdvancedDetectionEngine` | Survey | PLANNED |
-| M2 | Implementation | Modernized UI Dashboard & Interactive Controls | Refactor `Model Demo/main.py`: implement modern CustomTkinter dark-mode UI, telemetry HUD, interactive sliders, ROI overlay, manual overrides, and hardware hub connected to `EngineConfig` | M1 | PLANNED |
+| E2E | Testing | E2E Test Suite Track | Implement `tests/test_verification_suite.py` and `run_verification.py` covering Tiers 1–4 test cases using mock video and mock serial; publish `TEST_READY.md` | Survey | DONE |
+| M1 | Implementation | Core Detection Engine & Hardware Layer | Refactor `eco_engine.py`: implement `detect_best_device`, `SpatialROIFilter`, `TemporalPresenceSmoother`, `DutyCycleManager`, `EngineConfig`, `MockHardwareController`, `MockVideoSource`, and decoupled `AdvancedDetectionEngine` | Survey | DONE |
+| M2 | Implementation | Modernized UI Dashboard & Interactive Controls | Refactor `Model Demo/main.py`: implement modern CustomTkinter dark-mode UI, telemetry HUD, interactive sliders, ROI overlay, manual overrides, and hardware hub connected to `EngineConfig` | M1 | READY |
 | M3 | Implementation | Integration, 100% E2E Test Pass & Hardening | Full integration verification: run E2E test suite until 100% pass (Phase 1), perform Tier 5 adversarial hardening (Phase 2), and complete forensic integrity audit | M1, M2, E2E | PLANNED |
 
 ## Feature Inventory Cross-Check
