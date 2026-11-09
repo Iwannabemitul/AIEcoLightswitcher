@@ -20,6 +20,7 @@ Provides:
 
 import copy
 from dataclasses import asdict, dataclass, field, replace
+import logging
 import os
 import sys
 import threading
@@ -41,6 +42,7 @@ except Exception:
 # Default Target Classes for YOLOv8 (COCO dataset)
 # 0 = person (human occupant), 77 = teddy bear (doll / tabletop test proxy)
 DEFAULT_TARGET_CLASSES = {0: "person", 77: "doll/teddy"}
+logger = logging.getLogger("eco_engine")
 
 
 # ============================================================================
@@ -238,8 +240,9 @@ class SpatialROIFilter:
 
     def _get_pixel_polygon(self, width: int, height: int) -> np.ndarray:
         """Converts normalized vertices to pixel coordinates for the specified frame dimensions."""
-        if self._cached_poly_px is not None and self._last_shape == (width, height):
-            return self._cached_poly_px
+        cached = self._cached_poly_px
+        if cached is not None and self._last_shape == (width, height):
+            return cached
         pts = np.array(
             [[int(u * width), int(v * height)] for u, v in self.vertices],
             dtype=np.int32
@@ -250,8 +253,12 @@ class SpatialROIFilter:
 
     def is_point_in_roi(self, point: Tuple[int, int], width: int, height: int) -> bool:
         """Evaluates whether point (x, y) is inside or on the boundary of the polygon."""
+        if width <= 0 or height <= 0:
+            return False
+        px = min(max(0, int(point[0])), width - 1)
+        py = min(max(0, int(point[1])), height - 1)
         poly = self._get_pixel_polygon(width, height)
-        res = cv2.pointPolygonTest(poly, (float(point[0]), float(point[1])), measureDist=False)
+        res = cv2.pointPolygonTest(poly, (float(px), float(py)), measureDist=False)
         return res >= 0
 
     def filter_detections(
@@ -270,14 +277,16 @@ class SpatialROIFilter:
             for det in detections:
                 if isinstance(det, dict):
                     det["in_roi"] = True
-                    det["anchor"] = self.get_anchor_point(det["xyxy"])
+                    fx, fy = self.get_anchor_point(det["xyxy"])
+                    det["anchor"] = (min(max(0, int(fx)), width - 1), min(max(0, int(fy)), height - 1))
             return list(detections), []
 
         inside = []
         outside = []
         for det in detections:
             xyxy = det["xyxy"] if isinstance(det, dict) else det[0]
-            anchor = self.get_anchor_point(xyxy)
+            fx, fy = self.get_anchor_point(xyxy)
+            anchor = (min(max(0, int(fx)), width - 1), min(max(0, int(fy)), height - 1))
             in_zone = self.is_point_in_roi(anchor, width, height)
             if isinstance(det, dict):
                 det["anchor"] = anchor
@@ -379,7 +388,7 @@ class TemporalPresenceSmoother:
         self.last_switch_time = now if now is not None else time.time()
 
     def update(
-        self, raw_presence: bool, now: Optional[float] = None
+        self, raw_presence: Any, now: Optional[float] = None
     ) -> Tuple[bool, bool]:
         """
         Updates the filter state.
@@ -387,6 +396,7 @@ class TemporalPresenceSmoother:
         Returns:
             Tuple[bool, bool]: (current_smoothed_state, state_has_changed)
         """
+        raw_presence = bool(raw_presence)
         if now is None:
             now = time.time()
 
@@ -920,10 +930,13 @@ class MockVideoSource(BaseVideoStream):
             else:
                 self._current_frame = self._empty_img.copy()
 
-    def set_custom_frame(self, frame: np.ndarray) -> None:
+    def set_custom_frame(self, frame: Optional[np.ndarray]) -> None:
         """Sets an arbitrary numpy frame for custom test scenarios."""
         with self.lock:
-            self._current_frame = frame.copy()
+            if frame is not None and hasattr(frame, "copy"):
+                self._current_frame = frame.copy()
+            else:
+                self._current_frame = None
 
     def start(self) -> "MockVideoSource":
         self._is_opened = True
@@ -931,8 +944,10 @@ class MockVideoSource(BaseVideoStream):
 
     def read(self) -> Tuple[bool, Optional[np.ndarray]]:
         with self.lock:
-            if self._current_frame is not None:
+            if self._current_frame is not None and hasattr(self._current_frame, "copy"):
                 return True, self._current_frame.copy()
+            elif self._current_frame is not None:
+                return True, self._current_frame
             return False, None
 
     def stop(self) -> None:
@@ -1011,7 +1026,7 @@ class AdvancedDetectionEngine:
         self._running = False
         self._worker_thread = None
         self._lock = threading.Lock()
-        self._config_lock = threading.Lock()
+        self._config_lock = threading.RLock()
 
         self._latest_annotated_frame = None
         self._latest_telemetry: Dict[str, Any] = {}
@@ -1071,8 +1086,8 @@ class AdvancedDetectionEngine:
                     sleep_duration=self.config.sleep_duration,
                     enabled=self.config.duty_cycle_enabled
                 )
-            if "override_mode" in kwargs:
-                self.set_override(self.config.override_mode)
+        if "override_mode" in kwargs:
+            self.set_override(self.config.override_mode)
 
     def get_config(self) -> EngineConfig:
         """Returns snapshot of current configuration."""
@@ -1089,6 +1104,8 @@ class AdvancedDetectionEngine:
             self.hardware.set_light(True)
         elif mode == "FORCE_OFF":
             self.hardware.set_light(False)
+        elif mode == "AUTO":
+            self.hardware.set_light(self.smoother.current_state)
 
     def connect_serial(self, port: str) -> bool:
         """Connects serial hardware to the specified COM port or mock."""
@@ -1128,7 +1145,14 @@ class AdvancedDetectionEngine:
         self, raw_frame: np.ndarray, now: float, cfg: EngineConfig
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """Executes a single end-to-end processing step on a frame."""
+        if not isinstance(raw_frame, np.ndarray) or raw_frame.ndim < 2 or raw_frame.size == 0:
+            raise ValueError(
+                f"Invalid frame format: expected non-empty 2D/3D ndarray, got {type(raw_frame)} "
+                f"with shape {getattr(raw_frame, 'shape', None)}"
+            )
         h, w = raw_frame.shape[:2]
+        if h <= 0 or w <= 0:
+            raise ValueError(f"Invalid frame dimensions: {w}x{h}")
 
         # 1. Duty cycle update
         cycle_state, cycle_countdown, phase_transitioned = self.duty_cycle.update(now)
@@ -1206,7 +1230,7 @@ class AdvancedDetectionEngine:
             if self.hardware.current_state:
                 self.hardware.set_light(False)
         elif cfg.override_mode == "AUTO":
-            if state_changed or (self.hardware.current_state != smoothed_presence and self._first_sync):
+            if state_changed or (self.hardware.current_state != smoothed_presence):
                 self.hardware.set_light(smoothed_presence)
                 self._first_sync = False
 
@@ -1296,17 +1320,27 @@ class AdvancedDetectionEngine:
             with self._config_lock:
                 cfg = self.config.copy()
 
-            ret, raw_frame = self.stream.read()
+            try:
+                ret, raw_frame = self.stream.read()
+            except Exception as exc:
+                logger.error(f"[eco_engine] Stream read error: {exc}")
+                time.sleep(0.01)
+                continue
+
             if not ret or raw_frame is None:
                 time.sleep(0.01)
                 continue
 
             now = time.time()
-            annotated_frame, telemetry = self._execute_frame_step(raw_frame, now, cfg)
-
-            with self._lock:
-                self._latest_annotated_frame = annotated_frame
-                self._latest_telemetry = telemetry
+            try:
+                annotated_frame, telemetry = self._execute_frame_step(raw_frame, now, cfg)
+                with self._lock:
+                    self._latest_annotated_frame = annotated_frame
+                    self._latest_telemetry = telemetry
+            except Exception as exc:
+                logger.error(f"[eco_engine] Worker loop frame step error: {exc}")
+                time.sleep(0.01)
+                continue
 
             time.sleep(0.005)
 
@@ -1343,13 +1377,15 @@ class AdvancedDetectionEngine:
             cfg = self.config.copy()
 
         now = time.time()
-        annotated_frame, telemetry = self._execute_frame_step(raw_frame, now, cfg)
-
-        with self._lock:
-            self._latest_annotated_frame = annotated_frame
-            self._latest_telemetry = telemetry
-
-        return annotated_frame, telemetry
+        try:
+            annotated_frame, telemetry = self._execute_frame_step(raw_frame, now, cfg)
+            with self._lock:
+                self._latest_annotated_frame = annotated_frame
+                self._latest_telemetry = telemetry
+            return annotated_frame, telemetry
+        except Exception as exc:
+            logger.error(f"[eco_engine] Synchronous process_frame error: {exc}")
+            return None, {}
 
 
 # ============================================================================

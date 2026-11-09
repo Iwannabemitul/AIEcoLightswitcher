@@ -526,6 +526,7 @@ class TestTier3CrossFeatureCombinations(unittest.TestCase):
         # Return to AUTO
         engine.set_override("AUTO")
         self.assertEqual(engine.config.override_mode, "AUTO")
+        self.assertEqual(engine.hardware.current_state, engine.smoother.current_state)
 
     def test_TC_T3_04_spatial_roi_person_entering_and_exiting(self):
         """TC_T3_04: Spatial ROI with person entering from outside to inside ROI."""
