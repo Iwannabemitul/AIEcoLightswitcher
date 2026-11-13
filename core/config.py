@@ -89,8 +89,8 @@ class FeedConfig:
     Integrates seamlessly with EngineConfig for inference parameters.
     """
     feed_id: str                                  # Unique identifier e.g. "feed_1"
-    name: str                                     # Human-readable name e.g. "Front Entrance"
-    source: Any                                   # Camera index (0, 1), URL (HTTP/RTSP), or "MOCK:..."
+    name: str = ""                                # Human-readable name e.g. "Front Entrance"
+    source: Any = 0                               # Camera index (0, 1), URL (HTTP/RTSP), or "MOCK:..."
     pin: int = 13                                 # Arduino digital output pin (2–19)
     enabled: bool = True                          # Feed active processing flag
     conf_threshold: float = 0.50                  # Detection confidence threshold

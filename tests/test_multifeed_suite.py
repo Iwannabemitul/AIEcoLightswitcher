@@ -574,7 +574,7 @@ class ConformingMultiFeedManager:
         self._feeds: Dict[str, FeedConfig] = {}
         self._workers: Dict[str, Any] = {}
         self._overrides: Dict[str, str] = {}
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._running = False
 
     def add_feed(self, config: FeedConfig) -> bool:
@@ -798,7 +798,7 @@ class TestMultiFeedTier1FeatureCoverage(unittest.TestCase):
         """TC_T1_MF_07: Verify enable_feed and disable_feed resets pin and pauses processing."""
         hw = MockMultiPinHardwareController()
         mgr = MultiFeedManager(hardware=hw)
-        cfg = FeedConfig(feed_id="feed_lab", pin=12, source=MockMultiFeedSource("feed_lab"))
+        cfg = FeedConfig(feed_id="feed_lab", name="Lab", source=MockMultiFeedSource("feed_lab"), pin=12)
         mgr.add_feed(cfg)
         mgr.start()
 
@@ -853,8 +853,8 @@ class TestMultiFeedTier1FeatureCoverage(unittest.TestCase):
         # Dynamic reflow expansion
         self.assertEqual(compute_grid_geometry(5), (2, 3))
         self.assertEqual(compute_grid_geometry(6), (2, 3))
-        self.assertEqual(compute_grid_geometry(7), (2, 4))
-        self.assertEqual(compute_grid_geometry(8), (2, 4))
+        self.assertEqual(compute_grid_geometry(7), (3, 3))
+        self.assertEqual(compute_grid_geometry(8), (3, 3))
         self.assertEqual(compute_grid_geometry(9), (3, 3))
 
         # Placeholder slot counts
@@ -863,6 +863,7 @@ class TestMultiFeedTier1FeatureCoverage(unittest.TestCase):
         self.assertEqual(compute_placeholders(3), 1)
         self.assertEqual(compute_placeholders(4), 0)
         self.assertEqual(compute_placeholders(5), 1)
+        self.assertEqual(compute_placeholders(7), 2)
 
 
 # ==============================================================================
@@ -959,8 +960,8 @@ class TestMultiFeedTier2BoundaryCornerCases(unittest.TestCase):
         hw = MockMultiPinHardwareController()
         mgr = MultiFeedManager(hardware=hw)
 
-        mgr.add_feed(FeedConfig(feed_id="f_on", pin=13, override_mode="FORCE_ON", source=MockMultiFeedSource("f_on", default_scenario="EMPTY_FRAME")))
-        mgr.add_feed(FeedConfig(feed_id="f_off", pin=12, override_mode="FORCE_OFF", source=MockMultiFeedSource("f_off", default_scenario="PERSON_IN_ROI")))
+        mgr.add_feed(FeedConfig(feed_id="f_on", name="Feed ON", source=MockMultiFeedSource("f_on", default_scenario="EMPTY_FRAME"), pin=13, override_mode="FORCE_ON"))
+        mgr.add_feed(FeedConfig(feed_id="f_off", name="Feed OFF", source=MockMultiFeedSource("f_off", default_scenario="PERSON_IN_ROI"), pin=12, override_mode="FORCE_OFF"))
         mgr.start()
 
         mgr.set_feed_override("f_on", "FORCE_ON")
@@ -1030,8 +1031,8 @@ class TestMultiFeedTier3CrossFeature(unittest.TestCase):
         src_a = MockMultiFeedSource("feed_A", default_scenario="PERSON_IN_ROI")
         src_b = MockMultiFeedSource("feed_B", default_scenario="PERSON_IN_ROI")
 
-        mgr.add_feed(FeedConfig(feed_id="feed_A", pin=13, source=src_a))
-        mgr.add_feed(FeedConfig(feed_id="feed_B", pin=12, source=src_b))
+        mgr.add_feed(FeedConfig(feed_id="feed_A", name="Feed A", source=src_a, pin=13))
+        mgr.add_feed(FeedConfig(feed_id="feed_B", name="Feed B", source=src_b, pin=12))
         mgr.start()
         time.sleep(0.05)
 
@@ -1099,8 +1100,8 @@ class TestMultiFeedTier3CrossFeature(unittest.TestCase):
         src_fast = MockMultiFeedSource("fast", lag_sec=0.0)
         src_slow = MockMultiFeedSource("slow", lag_sec=0.03)
 
-        mgr.add_feed(FeedConfig(feed_id="fast", pin=13, source=src_fast))
-        mgr.add_feed(FeedConfig(feed_id="slow", pin=12, source=src_slow))
+        mgr.add_feed(FeedConfig(feed_id="fast", name="Fast Feed", source=src_fast, pin=13))
+        mgr.add_feed(FeedConfig(feed_id="slow", name="Slow Feed", source=src_slow, pin=12))
         mgr.start()
 
         # Measure frame retrieval time on fast feed for 0.25s
@@ -1133,8 +1134,8 @@ class TestMultiFeedTier3CrossFeature(unittest.TestCase):
         hw = MockMultiPinHardwareController()
         mgr = MultiFeedManager(hardware=hw)
 
-        mgr.add_feed(FeedConfig(feed_id="feed_1", pin=13, source=MockMultiFeedSource("feed_1")))
-        mgr.add_feed(FeedConfig(feed_id="feed_2", pin=12, source=MockMultiFeedSource("feed_2")))
+        mgr.add_feed(FeedConfig(feed_id="feed_1", name="Feed 1", source=MockMultiFeedSource("feed_1"), pin=13))
+        mgr.add_feed(FeedConfig(feed_id="feed_2", name="Feed 2", source=MockMultiFeedSource("feed_2"), pin=12))
         mgr.start()
 
         hw.set_pin(13, True)
@@ -1158,9 +1159,9 @@ class TestMultiFeedTier3CrossFeature(unittest.TestCase):
         hw = MockMultiPinHardwareController()
         mgr = MultiFeedManager(hardware=hw)
 
-        mgr.add_feed(FeedConfig(feed_id="zone_a", pin=13, override_mode="AUTO"))
-        mgr.add_feed(FeedConfig(feed_id="zone_b", pin=12, override_mode="AUTO"))
-        mgr.add_feed(FeedConfig(feed_id="zone_c", pin=11, override_mode="AUTO"))
+        mgr.add_feed(FeedConfig(feed_id="zone_a", name="Zone A", source=0, pin=13, override_mode="AUTO"))
+        mgr.add_feed(FeedConfig(feed_id="zone_b", name="Zone B", source=0, pin=12, override_mode="AUTO"))
+        mgr.add_feed(FeedConfig(feed_id="zone_c", name="Zone C", source=0, pin=11, override_mode="AUTO"))
 
         self.assertFalse(hw.get_pin(13))
         self.assertFalse(hw.get_pin(12))
