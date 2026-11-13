@@ -594,6 +594,31 @@ class TestDutyCycleManagerTransitionsAndContinuousMode(unittest.TestCase):
         dc.update_durations(eval_duration=0.0)
         self.assertGreaterEqual(dc.eval_duration, 0.1)
 
+    def test_mid_cycle_duration_reduction_triggers_immediate_transition(self):
+        """Reducing eval_duration below current elapsed time triggers phase transition immediately on next update."""
+        dc = DutyCycleManager(eval_duration=10.0, sleep_duration=5.0)
+        dc.reset(phase="EVALUATING", now=0.0)
+
+        # Elapsed = 4.0s (less than 10.0s)
+        phase, countdown, trans = dc.update(now=4.0)
+        self.assertEqual(phase, "EVALUATING")
+        self.assertFalse(trans)
+
+        # Mid-evaluating: user drops eval_duration to 3.0s (now 4.0s >= 3.0s)
+        dc.update_durations(eval_duration=3.0)
+        phase, countdown, trans = dc.update(now=4.0)
+        self.assertEqual(phase, "SLEEPING", "Must transition immediately because elapsed >= new duration")
+        self.assertTrue(trans)
+        self.assertEqual(countdown, 5.0)
+
+    def test_uninitialized_duty_cycle_auto_inits(self):
+        """DutyCycleManager without explicit reset() auto-initializes on first update."""
+        dc = DutyCycleManager(eval_duration=2.0, sleep_duration=3.0)
+        phase, countdown, trans = dc.update(now=50.0)
+        self.assertEqual(phase, "EVALUATING")
+        self.assertEqual(dc.timer_start, 50.0)
+        self.assertFalse(trans)
+
 
 class TestCrossAlgorithmicIntegrationInvariants(unittest.TestCase):
     """
@@ -653,6 +678,75 @@ class TestCrossAlgorithmicIntegrationInvariants(unittest.TestCase):
         st, ch = smoother.update(len(inside) > 0, now=12.0)
         self.assertFalse(st)
         self.assertTrue(ch)
+
+
+class TestIngestionAndDeviceUtilities(unittest.TestCase):
+    """
+    Verifies SingleFrameBuffer, FeedStatus, MockVideoSource, and device utilities.
+    """
+
+    def test_single_frame_buffer_atomic_drop_oldest(self):
+        """SingleFrameBuffer holds exactly 1 latest frame, drops older frames, and records metrics."""
+        buf = SingleFrameBuffer()
+        self.assertTrue(buf.is_empty)
+        success, frame, ts, fid = buf.get()
+        self.assertFalse(success)
+        self.assertIsNone(frame)
+
+        # Put 100 frames
+        for i in range(100):
+            frame_arr = np.full((10, 10, 3), i, dtype=np.uint8)
+            buf.put(frame_arr, timestamp=float(i))
+
+        # Check telemetry
+        self.assertEqual(buf.frame_count, 100)
+        self.assertEqual(buf.drop_count, 99)
+        self.assertFalse(buf.is_empty)
+
+        # Latest frame must be frame_id=100 with value 99
+        success, latest_frame, latest_ts, latest_id = buf.get()
+        self.assertTrue(success)
+        self.assertEqual(latest_id, 100)
+        self.assertEqual(latest_frame[0, 0, 0], 99)
+
+    def test_feed_status_enum_json_and_string_interop(self):
+        """FeedStatus must compare directly with strings and serialize to JSON string."""
+        import json
+        self.assertEqual(FeedStatus.ONLINE, "ONLINE")
+        self.assertEqual(FeedStatus.OFFLINE, "OFFLINE")
+        self.assertEqual(FeedStatus.CONNECTING.value, "CONNECTING")
+
+        payload = {"status": FeedStatus.ONLINE}
+        serialized = json.dumps(payload)
+        self.assertIn('"status": "ONLINE"', serialized)
+
+    def test_mock_video_source_scenarios(self):
+        """MockVideoSource generates frames according to configured scenarios."""
+        # Empty frame scenario
+        mock_empty = MockVideoSource(default_scenario="EMPTY_FRAME", simulate_fps=False)
+        mock_empty.start()
+        ret, frame = mock_empty.read()
+        self.assertTrue(ret)
+        self.assertEqual(frame.shape, (480, 640, 3))
+        self.assertEqual(np.count_nonzero(frame), 0, "EMPTY_FRAME must have zero nonzero pixels")
+        mock_empty.stop()
+
+        # Offline / stalled scenario
+        mock_offline = MockVideoSource(default_scenario="OFFLINE_STALLED", simulate_fps=False)
+        mock_offline.start()
+        ret, frame = mock_offline.read()
+        self.assertFalse(ret)
+        self.assertIsNone(frame)
+        mock_offline.stop()
+
+    def test_detect_best_device_safety(self):
+        """detect_best_device returns safe (device_str, display_name) tuple without throwing."""
+        dev_id, display_name = detect_best_device()
+        self.assertIn(dev_id, ["cpu", "0", "cuda", "cuda:0"])
+        self.assertIsInstance(display_name, str)
+
+        # Warmup engine handles None gracefully
+        warmup_engine(None)
 
 
 if __name__ == "__main__":
