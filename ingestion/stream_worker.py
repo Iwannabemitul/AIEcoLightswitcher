@@ -212,7 +212,9 @@ class StreamWorker:
         if self.stream_factory is not None:
             return self.stream_factory(self.source)
 
-        if isinstance(self.source, BaseVideoStream):
+        if isinstance(self.source, BaseVideoStream) or (
+            hasattr(self.source, "read") and hasattr(self.source, "start")
+        ):
             return self.source
 
         src_str = str(self.source).strip()
@@ -306,6 +308,7 @@ class StreamWorker:
                     self._buffer.put(frame, now)
                     if self.status != FeedStatus.ONLINE:
                         self._set_status(FeedStatus.ONLINE)
+                    time.sleep(0.002)
 
                 else:
                     consecutive_failures += 1
