@@ -1326,8 +1326,9 @@ class TestMultiFeedTier4RealWorld(unittest.TestCase):
                                 outside.append(d)
                         return inside, outside
 
-        roi_lab_a = SpatialROIFilter(enabled=True)
-        roi_lab_b = SpatialROIFilter(enabled=True)
+        roi_polygon = [(0.0, 0.0), (0.70, 0.0), (0.70, 1.0), (0.0, 1.0)]
+        roi_lab_a = SpatialROIFilter(normalized_vertices=roi_polygon, enabled=True)
+        roi_lab_b = SpatialROIFilter(normalized_vertices=roi_polygon, enabled=True)
 
         passerby = [{"xyxy": np.array([520, 100, 600, 450]), "conf": 0.95, "cls": 0}]
 
@@ -1351,8 +1352,8 @@ class TestMultiFeedTier4RealWorld(unittest.TestCase):
         src_1 = MockMultiFeedSource("cubicle_1", default_scenario="PERSON_IN_ROI")
         src_2 = MockMultiFeedSource("cubicle_2", default_scenario="PERSON_IN_ROI")
 
-        mgr.add_feed(FeedConfig(feed_id="cubicle_1", pin=13, source=src_1))
-        mgr.add_feed(FeedConfig(feed_id="cubicle_2", pin=12, source=src_2))
+        mgr.add_feed(FeedConfig(feed_id="cubicle_1", name="Cubicle 1", source=src_1, pin=13))
+        mgr.add_feed(FeedConfig(feed_id="cubicle_2", name="Cubicle 2", source=src_2, pin=12))
         mgr.start()
 
         hw.set_pin(13, True)
@@ -1380,9 +1381,9 @@ class TestMultiFeedTier4RealWorld(unittest.TestCase):
         hw = MockMultiPinHardwareController()
         mgr = MultiFeedManager(hardware=hw)
 
-        mgr.add_feed(FeedConfig(feed_id="auditorium", pin=13, override_mode="FORCE_OFF"))
-        mgr.add_feed(FeedConfig(feed_id="study_hall", pin=12, override_mode="AUTO"))
-        mgr.add_feed(FeedConfig(feed_id="server_closet", pin=11, override_mode="FORCE_ON"))
+        mgr.add_feed(FeedConfig(feed_id="auditorium", name="Auditorium", source=0, pin=13, override_mode="FORCE_OFF"))
+        mgr.add_feed(FeedConfig(feed_id="study_hall", name="Study Hall", source=0, pin=12, override_mode="AUTO"))
+        mgr.add_feed(FeedConfig(feed_id="server_closet", name="Server Closet", source=0, pin=11, override_mode="FORCE_ON"))
 
         mgr.set_feed_override("auditorium", "FORCE_OFF")
         mgr.set_feed_override("server_closet", "FORCE_ON")
@@ -1443,7 +1444,7 @@ class TestMultiFeedTier4RealWorld(unittest.TestCase):
         pins = [2, 3, 4, 5, 6, 7, 8, 9]
         for i, p in enumerate(pins):
             fid = f"wing_zone_{i+1}"
-            mgr.add_feed(FeedConfig(feed_id=fid, pin=p, source=MockMultiFeedSource(fid)))
+            mgr.add_feed(FeedConfig(feed_id=fid, name=fid, source=MockMultiFeedSource(fid), pin=p))
             hw.set_pin(p, True)
 
         self.assertTrue(all(hw.get_pin(p) for p in pins))

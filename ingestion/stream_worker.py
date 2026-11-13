@@ -247,9 +247,12 @@ class StreamWorker:
         while time.time() < t_end:
             if self._stop_event.is_set() or not self._running:
                 return False
+            # If source has explicitly signaled it is opened/available again, break early
+            if hasattr(self.source, "is_opened") and getattr(self.source, "is_opened", False):
+                break
             remaining = max(0.0, t_end - time.time())
             self._reconnect_countdown = round(remaining, 1)
-            self._stop_event.wait(timeout=min(0.05, remaining))
+            self._stop_event.wait(timeout=min(0.02, remaining))
         self._reconnect_countdown = 0.0
         return True
 
