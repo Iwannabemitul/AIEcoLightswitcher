@@ -161,6 +161,15 @@ class VideoStream(BaseVideoStream):
                 name=f"VideoStream-{self.source}"
             )
             self.thread.start()
+
+            # For active hardware/capture streams, wait briefly for initial sensor warm-up
+            if self.cap is not None and not self.is_simulation:
+                t_wait_end = time.time() + 1.5
+                while time.time() < t_wait_end and self.running:
+                    with self.lock:
+                        if self.frame is not None:
+                            break
+                    time.sleep(0.02)
         return self
 
     def _update_loop(self) -> None:
