@@ -224,12 +224,15 @@ class TestVideoStreamImmediateClearingAndStall(unittest.TestCase):
 
     def test_04_rapid_stall_and_resume_cycles(self):
         """Stress VideoStream and StreamWorker across 5 rapid stall-and-resume cycles."""
-        mock_cap = ControllableMockCap(opened=True)
+        mock_cap_holder = {"cap": ControllableMockCap(opened=True)}
 
         class ReconnectableMockVideoStream(VideoStream):
             def start(self) -> "VideoStream":
                 self.running = True
-                self.cap = mock_cap
+                # Fresh or open cap on every reconnect
+                cap = mock_cap_holder["cap"]
+                cap._opened = True
+                self.cap = cap
                 if self.thread is None or not self.thread.is_alive():
                     self.thread = threading.Thread(
                         target=self._update_loop,
@@ -252,7 +255,7 @@ class TestVideoStreamImmediateClearingAndStall(unittest.TestCase):
         time.sleep(0.1)
         for cycle in range(5):
             # Healthy phase
-            mock_cap._fail = False
+            mock_cap_holder["cap"]._fail = False
             t0 = time.perf_counter()
             while time.perf_counter() - t0 < 1.5:
                 if worker.status == FeedStatus.ONLINE:
@@ -261,7 +264,7 @@ class TestVideoStreamImmediateClearingAndStall(unittest.TestCase):
             self.assertEqual(worker.status, FeedStatus.ONLINE, f"Cycle {cycle}: Worker failed to reach ONLINE")
 
             # Stall phase
-            mock_cap._fail = True
+            mock_cap_holder["cap"]._fail = True
             t0 = time.perf_counter()
             while time.perf_counter() - t0 < 0.8:
                 if worker.status in (FeedStatus.OFFLINE, FeedStatus.RECONNECTING):
