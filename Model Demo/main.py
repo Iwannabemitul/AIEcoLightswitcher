@@ -749,6 +749,17 @@ class AIEcoLightSwitcher(ctk.CTk):
         )
         lbl_v_title.pack(side="left")
 
+        # Multi-Feed Web Hub Launcher Button
+        self.btn_web_hub = ctk.CTkButton(
+            v_header, text="🌐 Multi-Feed Web Hub",
+            width=150, height=24,
+            fg_color=BENTO_THEME["accent_cyan"], text_color="#000000",
+            hover_color="#33f4ff",
+            font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
+            command=self._launch_web_dashboard
+        )
+        self.btn_web_hub.pack(side="left", padx=12)
+
         self.lbl_v_source = ctk.CTkLabel(
             v_header, text="SOURCE: WEBCAM 0",
             font=ctk.CTkFont(family="Consolas", size=10, weight="bold"),
@@ -1900,6 +1911,39 @@ class AIEcoLightSwitcher(ctk.CTk):
                 self.event_logger.log("CONFIG", f"Override mode transition -> {override}")
             self._last_log_override = override
 
+    def _launch_web_dashboard(self):
+        """Launches the modern responsive multi-feed web dashboard."""
+        try:
+            from gui.web_dashboard import start_dashboard_server
+            from pipeline.multi_feed_manager import MultiFeedManager
+            from core.config import FeedConfig
+
+            if not hasattr(self, "_web_manager") or self._web_manager is None:
+                self._web_manager = MultiFeedManager(hardware=self.hardware)
+                self._web_manager.start()
+                # Register active primary stream
+                src = self.engine.config.video_source
+                self._web_manager.add_feed(FeedConfig(
+                    feed_id="feed_primary",
+                    name="Primary Stream",
+                    source=src,
+                    pin=13
+                ))
+                # Add demo secondary feeds to demonstrate minimum 4-card grid
+                self._web_manager.add_feed(FeedConfig(
+                    feed_id="feed_study",
+                    name="Study Commons",
+                    source="MOCK:EMPTY_FRAME",
+                    pin=12
+                ))
+                self._web_server = start_dashboard_server(self._web_manager, port=8080, open_browser=True)
+                self.event_logger.log("SYSTEM", "Multi-Feed Web Dashboard launched at http://localhost:8080")
+            else:
+                import webbrowser
+                webbrowser.open("http://localhost:8080")
+        except Exception as e:
+            print(f"[App] Error launching web dashboard: {e}")
+
     # ========================================================================
     # Clean Application Shutdown Protocol
     # ========================================================================
@@ -1975,5 +2019,36 @@ class AIEcoLightSwitcher(ctk.CTk):
 # ============================================================================
 
 if __name__ == "__main__":
-    app = AIEcoLightSwitcher()
-    app.mainloop()
+    import argparse
+    parser = argparse.ArgumentParser(description="AIEcoLightswitcher AI Vision & Smart Energy Command Hub")
+    parser.add_argument("--web", action="store_true", help="Launch modern responsive multi-feed web dashboard")
+    parser.add_argument("--port", type=int, default=8080, help="Web dashboard server port (default: 8080)")
+    args, unknown = parser.parse_known_args()
+
+    if args.web:
+        from hardware.mock_controller import MockMultiPinHardwareController
+        from pipeline.multi_feed_manager import MultiFeedManager
+        from gui.web_dashboard import start_dashboard_server
+        from core.config import FeedConfig
+
+        print("\n[Launcher] Launching AIEcoLightswitcher Multi-Feed Web Dashboard...")
+        hw = MockMultiPinHardwareController()
+        hw.connect()
+        mgr = MultiFeedManager(hardware=hw)
+        mgr.start()
+
+        # Add initial showcase feeds
+        mgr.add_feed(FeedConfig(feed_id="feed_1", name="Front Entrance", source="MOCK:PERSON_IN_ROI", pin=13))
+        mgr.add_feed(FeedConfig(feed_id="feed_2", name="Study Commons", source="MOCK:EMPTY_FRAME", pin=12))
+
+        server = start_dashboard_server(mgr, port=args.port, open_browser=True)
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\n[Launcher] Stopping web dashboard...")
+            mgr.stop()
+            server.shutdown()
+    else:
+        app = AIEcoLightSwitcher()
+        app.mainloop()

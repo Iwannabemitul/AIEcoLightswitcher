@@ -1,0 +1,661 @@
+/* ==========================================================================
+   AIEcoLightswitcher Modern Bento-Grid Theme & Responsive Layout
+   Conforming to Modern Web Guidance:
+   - css-layout (CSS Grid auto-fit, intrinsic aspect-ratio: 16/9)
+   - responsive-design (@container queries, clamp fluid scaling)
+   - interactions-in-complex-layouts (content-visibility: auto rendering containment)
+   - card (semantic article, source order, distinct action controls)
+   ========================================================================== */
+
+:root {
+  --bg-root: #0B0F17;
+  --card-surface: #131822;
+  --card-surface-alt: #161B22;
+  --card-surface-subtle: #0D1117;
+  
+  --border-subtle: #21262D;
+  --border-accent: #30363D;
+  --border-cyan: #00F0FF;
+  
+  --accent-cyan: #00F0FF;
+  --accent-indigo: #6366F1;
+  --status-mint: #10B981;
+  --status-amber: #F59E0B;
+  --status-crimson: #EF4444;
+  --status-offline: #6E7681;
+  
+  --text-primary: #F0F6FC;
+  --text-secondary: #8B949E;
+  --text-muted: #6E7681;
+  
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-root);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+}
+
+/* Replaced elements layout fix: block display to remove inline font-baseline gap */
+img, video, canvas {
+  display: block;
+  max-width: 100%;
+}
+
+/* ==========================================================================
+   HEADER RIBBON
+   ========================================================================== */
+.header-ribbon {
+  background: var(--card-surface);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 0.75rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.brand-section {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.brand-logo {
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-indigo));
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  color: #000;
+  font-size: 1rem;
+}
+
+.brand-title {
+  font-size: clamp(1rem, 1.2cqi + 0.8rem, 1.35rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.brand-subtitle {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+.header-telemetry {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  border: 1px solid var(--border-subtle);
+  background: var(--card-surface-subtle);
+}
+
+.badge-mint {
+  color: var(--status-mint);
+  border-color: rgba(16, 185, 129, 0.3);
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.badge-cyan {
+  color: var(--accent-cyan);
+  border-color: rgba(0, 240, 255, 0.3);
+  background: rgba(0, 240, 255, 0.1);
+}
+
+.badge-amber {
+  color: var(--status-amber);
+  border-color: rgba(245, 158, 11, 0.3);
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.badge-crimson {
+  color: var(--status-crimson);
+  border-color: rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 8px currentColor;
+  animation: pulse 2s infinite ease-in-out;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ==========================================================================
+   BUTTONS & CONTROLS
+   ========================================================================== */
+button, .btn {
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  padding: 0.45rem 0.85rem;
+  cursor: pointer;
+  border: 1px solid var(--border-accent);
+  background: var(--card-surface-alt);
+  color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+button:hover {
+  background: var(--border-accent);
+  border-color: var(--text-secondary);
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+.btn-primary {
+  background: var(--accent-cyan);
+  color: #050811;
+  border-color: var(--accent-cyan);
+}
+
+.btn-primary:hover {
+  background: #33f4ff;
+  border-color: #33f4ff;
+  color: #000;
+}
+
+.btn-danger {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: var(--status-crimson);
+  color: var(--status-crimson);
+}
+
+.btn-danger:hover {
+  background: var(--status-crimson);
+  color: #fff;
+}
+
+.btn-sm {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+}
+
+/* ==========================================================================
+   MAIN DASHBOARD LAYOUT & CSS GRID
+   ========================================================================== */
+.main-container {
+  flex: 1;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  max-width: 1920px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.stats-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.stat-tile {
+  background: var(--card-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.stat-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+/* ==========================================================================
+   FEED GRID (Modern CSS Grid with auto-fit, minmax, aspect-ratio: 16/9)
+   ========================================================================== */
+.feed-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 1.25rem;
+  width: 100%;
+}
+
+/* ==========================================================================
+   FEED CARD (Semantic <article>, @container queries & content-visibility)
+   ========================================================================== */
+.feed-card {
+  background: var(--card-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  container: card / inline-size;
+  
+  /* Rendering Isolation Containment from Modern Web Guidance */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 360px auto 320px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+@supports not (content-visibility: auto) {
+  .feed-card {
+    contain: layout style paint;
+  }
+}
+
+.feed-card:hover {
+  border-color: var(--border-accent);
+}
+
+.feed-card.active-occupied {
+  border-color: rgba(16, 185, 129, 0.5);
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.1);
+}
+
+.feed-card.active-sleeping {
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+.feed-card.feed-offline {
+  border-color: var(--border-subtle);
+  opacity: 0.85;
+}
+
+/* Header Region */
+.card-header {
+  padding: 0.75rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--card-surface-alt);
+  gap: 0.5rem;
+}
+
+.card-title-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.card-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pin-badge {
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--accent-indigo);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  padding: 0.15rem 0.45rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.pin-badge.pin-high {
+  background: rgba(16, 185, 129, 0.2);
+  color: var(--status-mint);
+  border-color: var(--status-mint);
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.3);
+}
+
+/* Media Region: aspect-ratio: 16/9 with object-fit: cover */
+.card-media {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  background: #050811;
+  overflow: hidden;
+}
+
+.feed-video-stream {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.feed-hud-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 0.65rem;
+}
+
+.hud-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.hud-bottom-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.hud-chip {
+  background: rgba(11, 15, 23, 0.75);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+/* Content Region: Telemetry details */
+.card-content {
+  padding: 0.75rem 1rem;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  background: var(--card-surface);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 0.75rem;
+}
+
+.metric-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.metric-label {
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+}
+
+.metric-value {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Footer Region: Controls */
+.card-footer {
+  padding: 0.65rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  background: var(--card-surface-alt);
+}
+
+.override-group {
+  display: inline-flex;
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.override-btn {
+  border: none;
+  border-radius: 0;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.72rem;
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.override-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.override-btn.active {
+  background: var(--accent-cyan);
+  color: #000;
+  font-weight: 700;
+}
+
+.override-btn.active-force-off {
+  background: var(--status-crimson);
+  color: #fff;
+  font-weight: 700;
+}
+
+/* Toggle Switch */
+.switch-container {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.switch-input {
+  appearance: none;
+  width: 32px;
+  height: 18px;
+  background: var(--border-accent);
+  border-radius: 9px;
+  position: relative;
+  outline: none;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.switch-input::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.switch-input:checked {
+  background: var(--status-mint);
+}
+
+.switch-input:checked::after {
+  transform: translateX(14px);
+}
+
+/* ==========================================================================
+   PLACEHOLDER CARDS (Ensuring Minimum 4 Cards at All Times)
+   ========================================================================== */
+.placeholder-card {
+  background: rgba(19, 24, 34, 0.4);
+  border: 1px dashed var(--border-accent);
+  border-radius: var(--radius-md);
+  aspect-ratio: 16 / 12;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1.5rem;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.placeholder-card:hover {
+  border-color: var(--accent-cyan);
+  background: rgba(19, 24, 34, 0.8);
+}
+
+.placeholder-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px dashed var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 1.3rem;
+}
+
+.placeholder-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.placeholder-desc {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  max-width: 220px;
+}
+
+/* Container Queries for Card Scalability */
+@container card (inline-size > 420px) {
+  .card-content {
+    grid-template-columns: repeat(4, 1fr);
+  }
+  .card-title {
+    font-size: 1.05rem;
+  }
+}
+
+/* ==========================================================================
+   MODAL DIALOG (Add Feed Dialog)
+   ========================================================================== */
+dialog {
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-lg);
+  background: var(--card-surface);
+  color: var(--text-primary);
+  padding: 1.5rem;
+  max-width: 520px;
+  width: 90%;
+  margin: auto;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+}
+
+dialog::backdrop {
+  background: rgba(5, 8, 17, 0.75);
+  backdrop-filter: blur(4px);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+}
+
+.modal-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.form-group {
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.form-label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.form-control, select, input[type="text"], input[type="number"] {
+  background: var(--card-surface-subtle);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 0.75rem;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.85rem;
+  outline: none;
+}
+
+.form-control:focus, select:focus, input:focus {
+  border-color: var(--accent-cyan);
+}
+
+.modal-footer {
+  margin-top: 1.5rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
