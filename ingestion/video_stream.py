@@ -32,6 +32,8 @@ def open_capture(source: Any, timeout_ms: int = 2000) -> cv2.VideoCapture:
 
     # 1. Local USB Camera Index
     if isinstance(source, int):
+        if source < 0:
+            return cv2.VideoCapture()
         if is_windows and hasattr(cv2, "CAP_DSHOW"):
             cap = cv2.VideoCapture(source, cv2.CAP_DSHOW)
         else:
@@ -95,7 +97,16 @@ class VideoStream(BaseVideoStream):
     Eliminates internal frame buffering lag and supports graceful start/stop/read.
     """
 
-    def __init__(self, source: Any = 0, timeout_ms: int = 2000, is_simulation_fallback: bool = False):
+    def __init__(
+        self,
+        source: Any = 0,
+        timeout_ms: int = 2000,
+        is_simulation_fallback: bool = False,
+        timeout: Optional[float] = None,
+        **kwargs
+    ):
+        if timeout is not None:
+            timeout_ms = int(timeout * 1000)
         self.source = source
         self.timeout_ms = timeout_ms
         self.is_simulation_fallback = is_simulation_fallback
@@ -113,12 +124,22 @@ class VideoStream(BaseVideoStream):
 
     def start(self) -> "VideoStream":
         """Opens capture and starts internal frame ingestion loop."""
+        if self.running and (self.cap is not None or self.is_simulation):
+            return self
+
         self.running = True
         self.is_simulation = False
 
         # Handle explicit mock/simulation requests for backwards compatibility
-        if self.source in ("simulation", "mock", -1):
+        src_str = str(self.source).lower().strip()
+        if src_str in ("simulation", "mock"):
             self.is_simulation = True
+            self.cap = None
+        elif self.cap is not None and hasattr(self.cap, "isOpened") and self.cap.isOpened():
+            # Respect pre-existing/injected VideoCapture instance (e.g. MockCap)
+            pass
+        elif isinstance(self.source, int) and self.source < 0:
+            # Negative camera indices are invalid and must not open or simulate
             self.cap = None
         else:
             try:
@@ -133,23 +154,31 @@ class VideoStream(BaseVideoStream):
                     self.is_simulation = True
                 self.cap = None
 
-        self.thread = threading.Thread(
-            target=self._update_loop,
-            daemon=True,
-            name=f"VideoStream-{self.source}"
-        )
-        self.thread.start()
+        if self.thread is None or not self.thread.is_alive():
+            self.thread = threading.Thread(
+                target=self._update_loop,
+                daemon=True,
+                name=f"VideoStream-{self.source}"
+            )
+            self.thread.start()
         return self
 
     def _update_loop(self) -> None:
         """Internal capture loop grabbing latest frames."""
         while self.running:
             if not self.is_simulation and self.cap is not None:
-                ret, frame = self.cap.read()
-                if ret and frame is not None:
+                try:
+                    ret, frame = self.cap.read()
+                except Exception as e:
+                    logger.warning(f"Exception during VideoCapture.read() for {self.source}: {e}")
+                    ret, frame = False, None
+
+                if ret and frame is not None and getattr(frame, "size", 0) > 0:
                     with self.lock:
                         self.frame = frame
                 else:
+                    with self.lock:
+                        self.frame = None
                     time.sleep(0.01)
             elif self.is_simulation:
                 # Backwards-compatible legacy animated simulation frame
@@ -200,6 +229,9 @@ class VideoStream(BaseVideoStream):
 
     @property
     def status(self) -> FeedStatus:
-        if self.is_opened:
+        if self.is_simulation:
             return FeedStatus.ONLINE
-        return FeedStatus.OFFLINE
+        if not self.is_opened:
+            return FeedStatus.OFFLINE
+        with self.lock:
+            return FeedStatus.ONLINE if self.frame is not None else FeedStatus.OFFLINE

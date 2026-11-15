@@ -242,17 +242,20 @@ class StreamWorker:
         return min(delay, self.max_reconnect_interval)
 
     def _wait_interruptible(self, duration: float) -> bool:
-        """Waits for duration in small slices, updating countdown. Returns False if stopped."""
+        """Waits for duration in small slices, updating countdown. Returns False if stopped or disabled."""
         t_end = time.time() + duration
+        # Detect if source was closed at initiation of backoff (edge trigger detector)
+        was_closed = hasattr(self.source, "is_opened") and not bool(getattr(self.source, "is_opened", True))
+
         while time.time() < t_end:
-            if self._stop_event.is_set() or not self._running:
+            if self._stop_event.is_set() or not self._running or not self._enabled:
                 return False
-            # If source has explicitly signaled it is opened/available again, break early
-            if hasattr(self.source, "is_opened") and getattr(self.source, "is_opened", False):
+            # Only break early if source explicitly transitioned from closed -> opened (e.g. simulate_reconnect)
+            if was_closed and getattr(self.source, "is_opened", False):
                 break
             remaining = max(0.0, t_end - time.time())
             self._reconnect_countdown = round(remaining, 1)
-            self._stop_event.wait(timeout=min(0.02, remaining))
+            self._stop_event.wait(timeout=min(0.05, remaining))
         self._reconnect_countdown = 0.0
         return True
 
@@ -280,10 +283,8 @@ class StreamWorker:
                 self._handle_disconnect(str(e))
                 continue
 
-            # Connected: enter read loop
+            # Connected: enter read loop (keep CONNECTING until first valid frame)
             consecutive_failures = 0
-            self._set_status(FeedStatus.ONLINE)
-            self._reconnect_attempts = 0
             self._last_frame_time = time.time()
 
             while self._running and self._enabled:
@@ -298,6 +299,8 @@ class StreamWorker:
 
                 if ret and frame is not None and getattr(frame, "size", 0) > 0:
                     consecutive_failures = 0
+                    self._reconnect_attempts = 0  # Reset only upon actual valid frame reception
+                    self._reconnect_countdown = 0.0
                     self._last_frame_time = now
                     h, w = frame.shape[:2]
                     self._resolution = (w, h)

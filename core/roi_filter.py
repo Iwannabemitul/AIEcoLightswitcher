@@ -63,7 +63,7 @@ class SpatialROIFilter:
     ) -> Tuple[int, int]:
         """
         Computes the spatial anchor point for a bounding box [x1, y1, x2, y2].
-        BOTTOM_CENTER: ((x1 + x2) // 2, y2) -> physically represents floor/foot contact.
+        BOTTOM_CENTER: ((x1 + x2) // 2, max(y1, y2)) -> physically represents floor/foot contact.
         CENTER: ((x1 + x2) // 2, (y1 + y2) // 2) -> body center.
         """
         x1, y1, x2, y2 = xyxy
@@ -71,7 +71,8 @@ class SpatialROIFilter:
         if self.mode in ("CENTER", "CENTROID"):
             mid_y = int((y1 + y2) / 2)
             return mid_x, mid_y
-        return mid_x, int(y2)
+        bottom_y = max(int(y1), int(y2))
+        return mid_x, bottom_y
 
     def _get_pixel_polygon(self, width: int, height: int) -> np.ndarray:
         """Converts normalized vertices to pixel coordinates for the specified frame dimensions."""
