@@ -74,222 +74,17 @@ logger = logging.getLogger("eco_engine")
 
 
 # ============================================================================
-# Hardware Abstraction Layer (Preserved for M1; refactored in M2)
+# Hardware Abstraction Layer (Re-exported from hardware package for Milestone 2)
 # ============================================================================
 
-class BaseHardwareController:
-    """Abstract interface contract for physical and simulated hardware controllers."""
-    def connect(self, port: Optional[str] = None) -> Any:
-        raise NotImplementedError
-
-    def disconnect(self) -> None:
-        raise NotImplementedError
-
-    def set_light(self, state: bool) -> bool:
-        raise NotImplementedError
-
-    @property
-    def is_connected(self) -> bool:
-        raise NotImplementedError
-
-    @property
-    def current_state(self) -> bool:
-        raise NotImplementedError
-
-    @property
-    def port(self) -> Optional[str]:
-        return None
-
-
-class HardwareController(BaseHardwareController):
-    """
-    Manages robust USB serial communication with Arduino Uno/Nano at 9600 baud.
-    Includes auto-detection of COM ports, clean buffer handling, and rate limiting.
-    """
-    def __init__(
-        self,
-        port: Optional[str] = None,
-        baudrate: int = 9600,
-        min_switch_interval: float = 1.5
-    ):
-        self._port = port
-        self.baudrate = baudrate
-        self.min_switch_interval = min_switch_interval
-        self.serial_conn = None
-        self._is_connected = False
-        self._current_state = False
-        self._last_switch_time = 0.0
-        self.lock = threading.Lock()
-
-    @staticmethod
-    def list_available_ports() -> List[str]:
-        """Returns list of detected serial COM ports."""
-        try:
-            ports = serial.tools.list_ports.comports()
-            return [p.device for p in ports]
-        except Exception:
-            return []
-
-    @property
-    def is_connected(self) -> bool:
-        with self.lock:
-            return self._is_connected and (self.serial_conn is not None) and self.serial_conn.is_open
-
-    @property
-    def current_state(self) -> bool:
-        with self.lock:
-            return self._current_state
-
-    @property
-    def port(self) -> Optional[str]:
-        return self._port
-
-    def connect(self, port: Optional[str] = None) -> ConnectionResult:
-        """Connects to serial port, draining inbound buffers and setting initial state."""
-        with self.lock:
-            if port:
-                self._port = port
-            if not self._port:
-                available = self.list_available_ports()
-                if available:
-                    self._port = available[0]
-                else:
-                    return ConnectionResult(False, "No serial COM ports found on system")
-
-            try:
-                if self.serial_conn and self.serial_conn.is_open:
-                    self.serial_conn.close()
-                self.serial_conn = serial.Serial(
-                    self._port, self.baudrate, timeout=0.5, write_timeout=0.5
-                )
-                time.sleep(1.0)  # Allow Arduino bootloader to initialize
-                # Drain any unread bytes (e.g. "READY\r\n")
-                try:
-                    self.serial_conn.reset_input_buffer()
-                except Exception:
-                    pass
-
-                self._is_connected = True
-                self._send_raw("0")
-                self._current_state = False
-                return ConnectionResult(True, f"Connected to {self._port}")
-            except Exception as e:
-                self._is_connected = False
-                self.serial_conn = None
-                return ConnectionResult(False, f"Failed connecting to {self._port}: {e}")
-
-    def disconnect(self) -> None:
-        """Gracefully disconnects serial link, turning off relay first."""
-        with self.lock:
-            if self.serial_conn and self.serial_conn.is_open:
-                try:
-                    self._send_raw("0")
-                    self.serial_conn.close()
-                except Exception:
-                    pass
-            self._is_connected = False
-            self.serial_conn = None
-
-    def _send_raw(self, char: str) -> None:
-        """Internal helper to write byte and flush."""
-        if self.serial_conn and self.serial_conn.is_open:
-            self.serial_conn.write(char.encode("ascii"))
-            self.serial_conn.flush()
-            # Drain inbound response bytes to prevent buffer overflow
-            try:
-                if self.serial_conn.in_waiting > 0:
-                    self.serial_conn.read_all()
-            except Exception:
-                pass
-
-    def set_light(self, turn_on: bool) -> bool:
-        """
-        Sends command '1' (ON) or '0' (OFF) with edge detection and rate clamp.
-        """
-        with self.lock:
-            now = time.time()
-            if turn_on != self._current_state:
-                if (now - self._last_switch_time) < self.min_switch_interval:
-                    return False  # Rate limit clamp active
-
-                self._current_state = turn_on
-                self._last_switch_time = now
-                cmd = "1" if turn_on else "0"
-                if self.serial_conn and self.serial_conn.is_open:
-                    try:
-                        self._send_raw(cmd)
-                        return True
-                    except Exception as e:
-                        print(f"[HardwareController] Serial write error: {e}")
-                        self._is_connected = False
-                        return False
-                return False
-            return True
-
-
-class MockHardwareController(BaseHardwareController):
-    """
-    In-memory hardware controller recording timestamps and commands ('1' and '0')
-    for headless automated testing without physical Arduino hardware.
-    """
-    def __init__(self, port: str = "MOCK_COM1", auto_connect: bool = True):
-        self._port = port
-        self._is_connected = bool(auto_connect)
-        self._current_state = False
-        self.command_log: List[Tuple[float, str]] = []
-        self.lock = threading.Lock()
-
-    @property
-    def is_connected(self) -> bool:
-        with self.lock:
-            return self._is_connected
-
-    @property
-    def current_state(self) -> bool:
-        with self.lock:
-            return self._current_state
-
-    @property
-    def port(self) -> str:
-        return self._port
-
-    @property
-    def command_history(self) -> List[str]:
-        """Returns sequence of commands ['1', '0', ...] without timestamps."""
-        with self.lock:
-            return [cmd for _, cmd in self.command_log]
-
-    def connect(self, port: Optional[str] = None) -> ConnectionResult:
-        with self.lock:
-            if port:
-                self._port = port
-            self._is_connected = True
-            return ConnectionResult(True, f"Connected to {self._port}")
-
-    def disconnect(self) -> None:
-        with self.lock:
-            self._is_connected = False
-
-    def set_light(self, state: bool) -> bool:
-        """Records state transition command ('1' or '0') on edge change."""
-        with self.lock:
-            if not self._is_connected:
-                return False
-            if state != self._current_state:
-                cmd = "1" if state else "0"
-                self.command_log.append((time.time(), cmd))
-                self._current_state = state
-            return True
-
-    def get_command_log(self) -> List[Tuple[float, str]]:
-        """Returns copy of recorded [(timestamp, '1'), ...] command log."""
-        with self.lock:
-            return list(self.command_log)
-
-    def reset_log(self) -> None:
-        """Clears recorded command history."""
-        with self.lock:
-            self.command_log.clear()
+from hardware import (
+    BaseHardwareController,
+    BaseMultiPinHardwareController,
+    HardwareController,
+    MultiPinHardwareController,
+    MockHardwareController,
+    MockMultiPinHardwareController,
+)
 
 
 # ============================================================================
@@ -834,8 +629,11 @@ __all__ = [
     "open_capture",
     # Hardware Controllers
     "BaseHardwareController",
+    "BaseMultiPinHardwareController",
     "HardwareController",
+    "MultiPinHardwareController",
     "MockHardwareController",
+    "MockMultiPinHardwareController",
     # Detection Pipeline & Facade
     "AdvancedDetectionEngine",
     "EcoVisionSystem",
