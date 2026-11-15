@@ -51,7 +51,13 @@ class MultiFeedManager:
     ):
         self.hardware = hardware if hardware is not None else MockMultiPinHardwareController()
         self.model_path = model_path
-        self.device = device or detect_best_device()
+        dev = device or detect_best_device()
+        if isinstance(dev, (list, tuple)):
+            self.device = str(dev[0])
+            self.device_info = str(dev[1]) if len(dev) > 1 else str(dev[0])
+        else:
+            self.device = str(dev)
+            self.device_info = str(dev)
 
         self._lock = threading.RLock()
         self._feeds: Dict[str, FeedConfig] = {}

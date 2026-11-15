@@ -394,7 +394,10 @@ document.addEventListener("DOMContentLoaded", () => {
       currentTelemetry = data.feeds || {};
       
       // Update global header badges
-      if (data.device) txtDevice.textContent = `DEVICE: ${data.device.toUpperCase()}`;
+      if (data.device) {
+        const devName = Array.isArray(data.device) ? data.device[0] : String(data.device);
+        txtDevice.textContent = `DEVICE: ${devName.toUpperCase()}`;
+      }
       if (data.hardware) {
         const hwText = data.hardware.is_simulation 
           ? "ARDUINO: VIRTUAL SIM" 

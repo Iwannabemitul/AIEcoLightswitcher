@@ -168,9 +168,11 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             "port": getattr(mgr.hardware, "port", "SIMULATION")
         }
 
+        dev_str = mgr.device[0] if isinstance(mgr.device, (list, tuple)) else str(mgr.device)
+
         self._serve_json({
             "feeds": clean_telems,
-            "device": mgr.device,
+            "device": dev_str,
             "hardware": hw_info,
             "global_fps": global_fps
         })
