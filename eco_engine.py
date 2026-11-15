@@ -86,6 +86,12 @@ from hardware import (
     MockMultiPinHardwareController,
 )
 
+# ============================================================================
+# Re-exports from modular pipeline/ package (Milestone 3 Implementation)
+# ============================================================================
+from pipeline.feed_pipeline import FeedPipeline
+from pipeline.multi_feed_manager import MultiFeedManager
+
 
 # ============================================================================
 # Core Detection Engine (Preserving internal attributes for test compatibility)
@@ -637,4 +643,6 @@ __all__ = [
     # Detection Pipeline & Facade
     "AdvancedDetectionEngine",
     "EcoVisionSystem",
+    "FeedPipeline",
+    "MultiFeedManager",
 ]
