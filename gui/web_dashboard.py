@@ -160,7 +160,7 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             clean_telems[fid] = entry
 
         fps_list = [t.get("fps", 0.0) for t in clean_telems.values() if t.get("fps")]
-        global_fps = round(max(fps_list), 1) if fps_list else 0.0
+        global_fps = min(45.0, round(max(fps_list), 1)) if fps_list else 0.0
 
         hw_info = {
             "is_connected": mgr.hardware.is_connected if mgr.hardware else False,

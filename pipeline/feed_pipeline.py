@@ -50,7 +50,8 @@ class FeedPipeline:
         self.worker = StreamWorker(
             source=config.source,
             feed_id=config.feed_id,
-            name=config.name
+            name=config.name,
+            max_fps=getattr(config, "max_fps", 45.0)
         )
 
         poly = list(config.roi_polygon) if config.roi_polygon else None
@@ -122,6 +123,9 @@ class FeedPipeline:
                     eval_duration=self.config.eval_duration,
                     sleep_duration=self.config.sleep_duration
                 )
+
+            if "max_fps" in kwargs:
+                self.worker.max_fps = max(0.0, float(kwargs["max_fps"]))
 
     def get_latest_frame(self) -> Tuple[Optional[np.ndarray], Dict[str, Any]]:
         """Returns the latest raw frame and telemetry from the worker."""
@@ -271,8 +275,13 @@ class FeedPipeline:
             )
 
         # 5. FPS update
+        max_fps = getattr(self.config, "max_fps", 45.0)
         worker_fps = w_telem.get("fps", 0.0)
+        if max_fps > 0:
+            worker_fps = min(float(max_fps), worker_fps)
         self._fps_ema = (0.85 * self._fps_ema + 0.15 * worker_fps) if self._fps_ema > 0 else worker_fps
+        if max_fps > 0:
+            self._fps_ema = min(float(max_fps), self._fps_ema)
 
         with self._lock:
             self._latest_annotated_frame = annotated_frame

@@ -418,11 +418,16 @@ class AdvancedDetectionEngine:
             )
 
         # 6. FPS Calculation
+        max_fps = getattr(cfg, "max_fps", 45.0)
         frame_time = time.time() - now
         current_fps = 1.0 / max(frame_time, 0.001)
+        if max_fps > 0:
+            current_fps = min(float(max_fps), current_fps)
         self._fps_ema = (
             0.9 * self._fps_ema + 0.1 * current_fps if self._fps_ema > 0 else current_fps
         )
+        if max_fps > 0:
+            self._fps_ema = min(float(max_fps), self._fps_ema)
 
         telemetry = {
             "fps": round(self._fps_ema, 1),
@@ -477,7 +482,13 @@ class AdvancedDetectionEngine:
                 time.sleep(0.01)
                 continue
 
-            time.sleep(0.005)
+            max_fps = getattr(cfg, "max_fps", 45.0)
+            if max_fps > 0:
+                target_interval = 1.0 / max_fps
+                elapsed = time.time() - now
+                time.sleep(max(0.002, target_interval - elapsed))
+            else:
+                time.sleep(0.005)
 
     def get_latest_frame_and_telemetry(
         self

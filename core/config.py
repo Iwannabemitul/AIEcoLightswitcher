@@ -44,6 +44,7 @@ class EngineConfig:
     min_switch_interval: float = 1.5      # Minimum seconds between serial toggles
     override_mode: str = "AUTO"           # "AUTO", "FORCE_ON", "FORCE_OFF"
     target_classes: list = field(default_factory=lambda: [0, 77])
+    max_fps: float = 45.0                 # Max frame rate cap (default 45.0 FPS)
 
     def to_dict(self) -> Dict[str, Any]:
         """Returns configuration as a dictionary."""
@@ -79,6 +80,8 @@ class EngineConfig:
                     value = str(value).upper().strip()
                 elif key == "roi_mode":
                     value = str(value).upper().strip()
+                elif key == "max_fps":
+                    value = max(1.0, min(120.0, float(value)))
                 setattr(self, key, value)
 
 
@@ -108,6 +111,7 @@ class FeedConfig:
     override_mode: str = "AUTO"                   # "AUTO", "FORCE_ON", "FORCE_OFF"
     target_classes: list = field(default_factory=lambda: [0, 77])
     engine_config: Optional[EngineConfig] = None
+    max_fps: float = 45.0                         # Maximum ingestion & processing frame rate cap
 
     def __post_init__(self):
         if self.engine_config is not None:
@@ -126,6 +130,7 @@ class FeedConfig:
             self.min_switch_interval = self.engine_config.min_switch_interval
             self.override_mode = self.engine_config.override_mode
             self.target_classes = list(self.engine_config.target_classes)
+            self.max_fps = getattr(self.engine_config, "max_fps", 45.0)
         else:
             self.engine_config = self.to_engine_config()
 
@@ -145,7 +150,8 @@ class FeedConfig:
             hysteresis_off_frames=self.hysteresis_off_frames,
             min_switch_interval=self.min_switch_interval,
             override_mode=self.override_mode,
-            target_classes=list(self.target_classes)
+            target_classes=list(self.target_classes),
+            max_fps=self.max_fps
         )
 
     def to_dict(self) -> Dict[str, Any]:

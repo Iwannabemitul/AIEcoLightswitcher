@@ -113,7 +113,8 @@ class StreamWorker:
         reconnect_interval: float = 2.0,
         max_reconnect_interval: float = 15.0,
         read_timeout: float = 2.0,
-        stream_factory: Optional[Callable[[Any], BaseVideoStream]] = None
+        stream_factory: Optional[Callable[[Any], BaseVideoStream]] = None,
+        max_fps: float = 45.0
     ):
         self.source = source
         self.feed_id = feed_id
@@ -122,6 +123,7 @@ class StreamWorker:
         self.max_reconnect_interval = max(self.reconnect_interval, float(max_reconnect_interval))
         self.read_timeout = max(0.5, float(read_timeout))
         self.stream_factory = stream_factory
+        self.max_fps = max(0.0, float(max_fps))
 
         self._buffer = SingleFrameBuffer()
         self._status = FeedStatus.UNASSIGNED
@@ -131,6 +133,7 @@ class StreamWorker:
         self._fps_ema = 0.0
         self._fps_alpha = 0.15
         self._last_frame_time = 0.0
+        self._prev_frame_timestamp = 0.0
         self._resolution = (0, 0)
         self._reconnect_attempts = 0
         self._reconnect_countdown = 0.0
@@ -166,7 +169,10 @@ class StreamWorker:
 
     @property
     def fps(self) -> float:
-        return round(self._fps_ema, 1)
+        val = round(self._fps_ema, 1)
+        if self.max_fps > 0:
+            return min(float(self.max_fps), val)
+        return val
 
     def start(self) -> "StreamWorker":
         """Spawns the background ingestion worker thread."""
@@ -286,6 +292,7 @@ class StreamWorker:
             # Connected: enter read loop (keep CONNECTING until first valid frame)
             consecutive_failures = 0
             self._last_frame_time = time.time()
+            self._prev_frame_timestamp = 0.0
 
             while self._running and self._enabled:
                 loop_start = time.time()
@@ -305,16 +312,30 @@ class StreamWorker:
                     h, w = frame.shape[:2]
                     self._resolution = (w, h)
 
-                    # Update EMA FPS
-                    dt = now - loop_start
-                    if dt > 0:
-                        instant_fps = 1.0 / dt
-                        self._fps_ema = (self._fps_alpha * instant_fps) + ((1.0 - self._fps_alpha) * self._fps_ema)
+                    # Update EMA FPS based on inter-frame duration
+                    if self._prev_frame_timestamp > 0:
+                        frame_delta = now - self._prev_frame_timestamp
+                        if frame_delta > 0:
+                            instant_fps = 1.0 / frame_delta
+                            if self.max_fps > 0:
+                                instant_fps = min(float(self.max_fps), instant_fps)
+                            self._fps_ema = (self._fps_alpha * instant_fps) + ((1.0 - self._fps_alpha) * self._fps_ema)
+                    elif self.max_fps > 0:
+                        self._fps_ema = min(float(self.max_fps), 30.0)
+                    self._prev_frame_timestamp = now
 
                     self._buffer.put(frame, now)
                     if self.status != FeedStatus.ONLINE:
                         self._set_status(FeedStatus.ONLINE)
-                    time.sleep(0.002)
+
+                    # Enforce maximum frame cap (e.g. 45 FPS -> ~22.2ms per frame)
+                    if self.max_fps > 0:
+                        target_interval = 1.0 / self.max_fps
+                        elapsed = time.time() - loop_start
+                        sleep_time = max(0.002, target_interval - elapsed)
+                        time.sleep(sleep_time)
+                    else:
+                        time.sleep(0.002)
 
                 else:
                     consecutive_failures += 1

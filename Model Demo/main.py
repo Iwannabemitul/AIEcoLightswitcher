@@ -569,7 +569,7 @@ class AIEcoLightSwitcher(ctk.CTk):
         # Start background animation pulse loop (450ms)
         self._pulse_tick()
 
-        # Start non-blocking decoupled UI update loop (20ms, ~50 FPS)
+        # Start non-blocking decoupled UI update loop (23ms, ~43.5 FPS, capped at max 45 FPS)
         self.update_loop()
 
     # ========================================================================
@@ -1817,9 +1817,9 @@ class AIEcoLightSwitcher(ctk.CTk):
             # 7. Check and Dispatch Edge-Triggered State Transitions to Tab 4
             self._check_and_log_state_transitions(metrics)
 
-        # Reschedule next tick at 20ms (50 FPS)
+        # Reschedule next tick at 23ms (~43.5 FPS, capped at max 45 FPS)
         if not self._is_shutting_down:
-            self._update_after_id = self.after(20, self.update_loop)
+            self._update_after_id = self.after(23, self.update_loop)
 
     def _update_stat_tiles(self, metrics: Dict[str, Any]):
         """Refreshes the 4 lower Bento stat tiles with latest telemetry."""
